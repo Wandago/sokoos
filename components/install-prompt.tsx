@@ -92,7 +92,7 @@ export function InstallPrompt() {
                 await deferred.userChoice;
                 dismiss();
               }}
-              className="mt-2.5 inline-flex h-9 items-center gap-2 rounded-lg bg-brand px-3 text-[13px] font-semibold text-white hover:bg-brand-hover"
+              className="mt-2.5 inline-flex h-9 items-center gap-2 rounded-lg bg-brand px-3 text-[13px] font-semibold text-brand-ink hover:bg-brand-hover"
             >
               <Download className="size-4" />
               Install

@@ -79,7 +79,7 @@ function CaptureScreen() {
             key={stage}
             className="flex shrink-0 items-center gap-2 rounded-full bg-surface-sunken px-3 py-1.5 text-[11px] font-semibold text-text-secondary"
           >
-            <span className="tabular flex size-4 items-center justify-center rounded-full bg-ai text-[9px] text-white">
+            <span className="tabular flex size-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-brand-ink">
               {i + 1}
             </span>
             {stage}
@@ -123,16 +123,21 @@ function UploadArea({ onOpen }: { onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
-      className="flex w-full flex-col items-center rounded-card border-2 border-dashed border-ai/40 bg-ai-soft/50 px-6 py-8 text-center transition-colors hover:bg-ai-soft"
+      className="relative flex w-full flex-col items-center overflow-hidden rounded-card bg-panel px-6 py-8 text-center text-panel-text shadow-float ring-1 ring-white/5"
     >
-      <span className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-ai text-white">
-        <Camera className="size-6" strokeWidth={2} />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-20 left-1/2 size-60 -translate-x-1/2 rounded-full opacity-35 blur-2xl"
+        style={{ background: "radial-gradient(circle, var(--lime-500), transparent 70%)" }}
+      />
+      <span className="relative mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand text-brand-ink">
+        <Camera className="size-6" strokeWidth={2.1} />
       </span>
-      <span className="text-[15px] font-bold">Capture a document</span>
-      <span className="mt-1 max-w-xs text-[13px] leading-relaxed text-text-secondary">
+      <span className="relative text-[15px] font-bold">Capture a document</span>
+      <span className="relative mt-1 max-w-xs text-[13px] leading-relaxed text-panel-muted">
         Photograph a receipt, upload an M-Pesa screenshot, or drop in a full statement.
       </span>
-      <span className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-ai px-4 text-[13px] font-semibold text-white">
+      <span className="relative mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-brand px-4 text-[13px] font-semibold text-brand-ink">
         <Upload className="size-4" />
         Choose a file
       </span>
@@ -152,7 +157,7 @@ function CaptureCard({ capture, onOpen }: { capture: Capture; onOpen: () => void
           "flex size-11 shrink-0 items-center justify-center rounded-xl",
           capture.status === "needs_review"
             ? "bg-pending-soft text-pending-text"
-            : "bg-ai-soft text-ai-text",
+            : "bg-success-soft text-success-text",
         )}
       >
         <Icon className="size-5" strokeWidth={2} />
@@ -423,7 +428,7 @@ function UploadSheet({ open, onClose }: { open: boolean; onClose: () => void }) 
                   <span
                     className={cn(
                       "flex size-5 items-center justify-center rounded-full text-[10px] font-bold",
-                      i <= stage ? "bg-ai text-white" : "bg-surface-sunken text-text-muted",
+                      i <= stage ? "bg-brand text-brand-ink" : "bg-surface-sunken text-text-muted",
                     )}
                   >
                     {i < stage ? <Check className="size-3" strokeWidth={3} /> : i + 1}

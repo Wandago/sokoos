@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { cn } from "@/lib/cn";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger" | "ai";
+type Variant = "primary" | "dark" | "secondary" | "ghost" | "danger" | "ai";
 type Size = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 select-none whitespace-nowrap";
+  "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 select-none whitespace-nowrap";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-brand text-white shadow-card hover:bg-brand-hover",
+  primary: "bg-brand text-brand-ink hover:bg-brand-hover",
+  dark: "bg-panel text-panel-text hover:bg-panel-raised",
   secondary:
     "bg-surface text-text border border-border hover:bg-surface-hover hover:border-border-strong",
   ghost: "text-text-secondary hover:bg-surface-hover hover:text-text",

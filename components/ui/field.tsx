@@ -3,7 +3,7 @@
 import { cn } from "@/lib/cn";
 
 const control =
-  "w-full rounded-xl border border-border bg-surface px-3.5 text-[15px] text-text placeholder:text-text-muted transition-colors focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/20 disabled:opacity-60";
+  "w-full rounded-2xl border border-border bg-surface px-3.5 text-[15px] text-text placeholder:text-text-muted transition-colors focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/20 disabled:opacity-60";
 
 export function Field({
   label,
@@ -40,7 +40,7 @@ export function Input({
 }: React.InputHTMLAttributes<HTMLInputElement> & { prefix?: string }) {
   if (prefix) {
     return (
-      <span className="flex items-stretch overflow-hidden rounded-xl border border-border bg-surface transition-colors focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/20">
+      <span className="flex items-stretch overflow-hidden rounded-2xl border border-border bg-surface transition-colors focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/20">
         <span className="flex items-center border-r border-border-subtle bg-surface-sunken px-3 text-[13px] font-semibold text-text-secondary">
           {prefix}
         </span>

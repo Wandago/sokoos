@@ -185,6 +185,42 @@ export function ledgerTotals(db: Database, days = 30) {
   return { income, expenses, net: income - expenses, unreconciled: entries.filter((e) => !e.reconciled).length };
 }
 
+/** Daily expense totals, so the spending card plots spending. */
+export function expenseSeries(db: Database, days = 7) {
+  const points: { label: string; value: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    points.push({
+      label: date.toLocaleDateString("en-KE", { weekday: "short" }),
+      value: db.ledger
+        .filter((e) => e.type === "expense" && isSameDay(e.date, date))
+        .reduce((sum, e) => sum + e.amount, 0),
+    });
+  }
+  return points;
+}
+
+/** What went out today, for the dashboard's spending card. */
+export function todayExpenses(db: Database) {
+  const today = new Date();
+  return db.ledger
+    .filter((e) => e.type === "expense" && isSameDay(e.date, today))
+    .reduce((sum, e) => sum + e.amount, 0);
+}
+
+/** Customers to surface in Quick Send: most recent first, then biggest. */
+export function quickSendCustomers(db: Database, limit = 6) {
+  const lastOrderAt = new Map<string, number>();
+  db.orders.forEach((o) => {
+    const at = +new Date(o.createdAt);
+    if (at > (lastOrderAt.get(o.customerId) ?? 0)) lastOrderAt.set(o.customerId, at);
+  });
+  return [...db.customers]
+    .sort((a, b) => (lastOrderAt.get(b.id) ?? 0) - (lastOrderAt.get(a.id) ?? 0))
+    .slice(0, limit);
+}
+
 /** The one-line "smart insight" the dashboard leads with. Always explainable. */
 export function smartInsight(db: Database): { text: string; detail: string } {
   const series = revenueSeries(db, 14);

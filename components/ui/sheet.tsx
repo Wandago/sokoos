@@ -118,7 +118,7 @@ export function ConfirmSheet({
           }}
           className={cn(
             "h-12 flex-1 rounded-xl text-sm font-semibold text-white",
-            tone === "danger" ? "bg-danger hover:bg-danger-hover" : "bg-brand hover:bg-brand-hover",
+            tone === "danger" ? "bg-danger hover:bg-danger-hover" : "bg-brand text-brand-ink hover:bg-brand-hover",
           )}
         >
           {confirmLabel}

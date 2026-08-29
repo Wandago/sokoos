@@ -48,7 +48,7 @@ function DeliveriesScreen() {
       <div className="mb-4 grid grid-cols-3 gap-2.5">
         <StatTile label="On the way" value={String(active.length)} sub="right now" tone="delivery" />
         <StatTile label="Delivered" value={String(deliveredToday.length)} sub="today" />
-        <StatTile label="Fees today" value={money(feesToday, { compact: true })} />
+        <StatTile label="Fees today" unit="KES" value={money(feesToday, { compact: true, bare: true })} />
       </div>
 
       <Segmented

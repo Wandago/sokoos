@@ -30,9 +30,9 @@ export function Segmented<T extends string>({
             onClick={() => onChange(option.value)}
             aria-pressed={active}
             className={cn(
-              "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] font-semibold transition-colors",
+              "flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-4 text-[13px] font-semibold transition-colors",
               active
-                ? "border-transparent bg-text text-text-inverted"
+                ? "border-transparent bg-brand text-brand-ink"
                 : "border-border bg-surface text-text-secondary hover:bg-surface-hover",
             )}
           >
@@ -41,7 +41,7 @@ export function Segmented<T extends string>({
               <span
                 className={cn(
                   "tabular rounded-full px-1.5 text-[11px]",
-                  active ? "bg-white/20" : "bg-surface-sunken text-text-muted",
+                  active ? "bg-brand-ink/12" : "bg-surface-sunken text-text-muted",
                 )}
               >
                 {option.count}

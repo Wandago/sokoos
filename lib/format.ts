@@ -6,14 +6,18 @@ const kes = new Intl.NumberFormat("en-KE", {
 });
 
 /** KES 48,500 — the product always shows the currency, never a bare number. */
-export function money(amount: number, opts?: { compact?: boolean; sign?: boolean }) {
+export function money(
+  amount: number,
+  opts?: { compact?: boolean; sign?: boolean; bare?: boolean },
+) {
   const abs = Math.abs(amount);
   const sign = opts?.sign ? (amount < 0 ? "−" : "+") : amount < 0 ? "−" : "";
+  const unit = opts?.bare ? "" : "KES ";
   if (opts?.compact && abs >= 1000) {
     const k = abs / 1000;
-    return `${sign}KES ${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, "")}K`;
+    return `${sign}${unit}${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, "")}K`;
   }
-  return `${sign}KES ${kes.format(Math.round(abs))}`;
+  return `${sign}${unit}${kes.format(Math.round(abs))}`;
 }
 
 /** Bare number with thousands separators, for tables that show KES in a header. */

@@ -12,7 +12,7 @@ export function SokoMark({ className, plain }: { className?: string; plain?: boo
     <span
       className={cn(
         "inline-flex items-center justify-center overflow-hidden",
-        plain ? "" : "rounded-[28%] bg-brand text-white",
+        plain ? "" : "rounded-[30%] bg-brand text-brand-ink",
         className,
       )}
       aria-hidden

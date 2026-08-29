@@ -51,7 +51,7 @@ function MoreScreen() {
               </span>
               <span className="flex-1 text-[15px] font-semibold">{item.label}</span>
               {count > 0 && (
-                <span className="tabular rounded-full bg-brand px-2 py-0.5 text-[11px] font-bold text-white">
+                <span className="tabular rounded-full bg-brand px-2 py-0.5 text-[11px] font-bold text-brand-ink">
                   {count}
                 </span>
               )}

@@ -117,7 +117,7 @@ function InboxScreen() {
                   </div>
                 </div>
                 {conversation.unread > 0 && (
-                  <span className="tabular flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-[10px] font-bold text-white">
+                  <span className="tabular flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-[10px] font-bold text-brand-ink">
                     {conversation.unread}
                   </span>
                 )}
@@ -216,7 +216,7 @@ function Thread({ conversationId, onClose }: { conversationId: string; onClose: 
               className={cn(
                 "max-w-[80%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed",
                 message.from === "business"
-                  ? "rounded-br-md bg-brand text-white"
+                  ? "rounded-br-md bg-panel text-panel-text"
                   : "rounded-bl-md bg-surface-sunken text-text",
               )}
             >

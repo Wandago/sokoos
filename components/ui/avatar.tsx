@@ -1,13 +1,13 @@
 import { initials } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
-/** Deterministic tint so the same person always gets the same colour. */
+/** Deterministic tint so the same person always gets the same colour, drawn
+ * only from the brand pair — the row reads as one system, not confetti. */
 const tints = [
-  "bg-green-100 text-green-800",
-  "bg-ai-soft text-ai-text",
-  "bg-delivery-soft text-delivery-text",
-  "bg-pending-soft text-pending-text",
-  "bg-danger-soft text-danger-text",
+  "bg-brand text-brand-ink",
+  "bg-panel text-brand",
+  "bg-forest-100 text-forest-800",
+  "bg-lime-200 text-forest-800",
 ];
 
 function tintFor(name: string) {

@@ -72,15 +72,19 @@ Tokens live in `app/globals.css` — a semantic layer (`--surface`, `--text`,
 reads, which is what makes light and dark mode a token swap rather than a
 per-component chore.
 
-- **Primary** — Soko Green (`#018059`), deliberately deeper and cooler than
-  M-Pesa green so it reads as the product's own colour.
-- **Supporting hues** — one per concern: violet for AI and Smart Capture, cyan
-  for delivery, amber for pending, red for failed.
-- **Neutrals** — green-tinted ink, never pure grey or pure black.
+- **Primary** — electric lime (`#C3F53C`). It is a *fill*, never a text colour:
+  `--brand` is the surface and `--brand-ink` (`#06160D`) is what sits on it.
+  Text that needs to read as brand on white uses `--brand-text` instead.
+- **Forest** — the dark counterweight (`--panel`, `#0C2917`). Balance card,
+  bottom nav, spending card, Smart Capture hero.
+- **Supporting hues** — one per concern: violet for AI, cyan for delivery, amber
+  for pending, red for failed. Used as accents, never as whole screens.
+- **Neutrals** — faintly green-tinted ink, never pure grey or pure black.
 - **Type** — Plus Jakarta Sans for headings, Inter for everything else, with
   tabular numerals wherever money appears.
-- **Charts** — hand-rolled inline SVG/CSS, single-series, validated for contrast
-  and colour-vision deficiency against both surfaces.
+- **Charts** — hand-rolled inline SVG/CSS, single-series. Lime is too light to
+  carry a series alone on white, so bars pair lime companions with a near-black
+  emphasis mark and every bar keeps a visible label.
 
 Financial states are always visually distinct and never carried by colour alone:
 Paid, Part paid, Unpaid, Cash on delivery, Pending, Failed, Needs review.

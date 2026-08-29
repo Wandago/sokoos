@@ -54,14 +54,14 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
                 className={cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
                   active
-                    ? "bg-brand-soft text-brand-soft-text"
+                    ? "bg-panel text-brand"
                     : "text-text-secondary hover:bg-surface-hover hover:text-text",
                 )}
               >
                 <item.icon className="size-[18px]" strokeWidth={active ? 2.4 : 2} />
                 <span className="flex-1">{item.label}</span>
                 {count > 0 && (
-                  <span className="tabular rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  <span className="tabular rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-bold text-brand-ink">
                     {count}
                   </span>
                 )}
@@ -72,7 +72,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         <div className="border-t border-border-subtle p-3">
           <button
             onClick={() => setQuickOpen(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-hover"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-brand px-4 py-3 text-sm font-semibold text-brand-ink hover:bg-brand-hover"
           >
             <Plus className="size-4" strokeWidth={2.5} />
             New
@@ -84,7 +84,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="pt-safe sticky top-0 z-30 border-b border-border-subtle bg-bg/85 backdrop-blur-lg lg:hidden">
           <div className="flex items-center gap-3 px-4 py-3">
-            <SokoMark className="size-8" />
+            <SokoMark className="size-9" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15px] font-bold leading-tight tracking-tight">
                 {db.business.name}
@@ -96,11 +96,11 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
             <Link
               href="/payments"
               aria-label="Alerts"
-              className="relative inline-flex size-10 items-center justify-center rounded-full text-text-secondary hover:bg-surface-hover"
+              className="relative inline-flex size-10 items-center justify-center rounded-full border border-border-subtle bg-surface text-text-secondary hover:bg-surface-hover"
             >
-              <Bell className="size-5" />
+              <Bell className="size-[18px]" />
               {badges.review > 0 && (
-                <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger ring-2 ring-bg" />
+                <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger ring-2 ring-surface" />
               )}
             </Link>
           </div>
@@ -111,9 +111,11 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      {/* ---- Mobile bottom navigation ----------------------------------- */}
-      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 border-t border-border-subtle bg-bg/90 backdrop-blur-lg lg:hidden">
-        <div className="mx-auto grid max-w-md grid-cols-5 items-end px-2 pt-1.5">
+      {/* ---- Mobile bottom navigation -----------------------------------
+           A floating forest pill with a lime action key in the middle, so the
+           three things a seller does all day are one thumb-reach apart. */}
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 px-4 pb-3 lg:hidden">
+        <div className="mx-auto flex max-w-sm items-center justify-between gap-1 rounded-pill bg-panel px-3 py-2.5 shadow-float">
           {primaryNav.map((item) => (
             <NavTab
               key={item.href}
@@ -124,20 +126,21 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               count={item.badge ? badges[item.badge] : 0}
             />
           ))}
-          <div className="flex justify-center pb-1">
-            <button
-              onClick={() => setQuickOpen(true)}
-              aria-label="Quick actions"
-              className="-mt-6 inline-flex size-14 items-center justify-center rounded-full bg-brand text-white shadow-raised transition-transform active:scale-95"
-            >
-              <Plus className="size-6" strokeWidth={2.5} />
-            </button>
-          </div>
+          <button
+            onClick={() => setQuickOpen(true)}
+            aria-label="Quick actions"
+            className="mx-1 inline-flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand text-brand-ink transition-transform active:scale-95"
+          >
+            <Plus className="size-6" strokeWidth={2.6} />
+          </button>
           <NavTab
             href="/more"
             label="More"
             icon={MoreHorizontal}
-            active={isActive(pathname, "/more") || !["/", "/orders", "/inbox"].some((h) => isActive(pathname, h))}
+            active={
+              isActive(pathname, "/more") ||
+              !["/", "/orders", "/inbox"].some((h) => isActive(pathname, h))
+            }
             count={0}
           />
         </div>
@@ -165,15 +168,17 @@ function NavTab({
   return (
     <Link
       href={href}
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex flex-col items-center gap-1 rounded-lg px-1 pb-2 pt-1.5 text-[10px] font-semibold transition-colors",
-        active ? "text-brand" : "text-text-muted",
+        "relative flex h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl text-[10px] font-semibold transition-colors",
+        active ? "bg-panel-raised text-brand" : "text-panel-muted hover:text-white",
       )}
     >
       <span className="relative">
-        <Icon className="size-[22px]" strokeWidth={active ? 2.4 : 2} />
+        <Icon className="size-[21px]" strokeWidth={active ? 2.4 : 2} />
         {count > 0 && (
-          <span className="tabular absolute -right-2 -top-1.5 min-w-4 rounded-full bg-danger px-1 text-[9px] font-bold leading-4 text-white ring-2 ring-bg">
+          <span className="tabular absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-[9px] font-bold leading-4 text-brand-ink">
             {count > 9 ? "9+" : count}
           </span>
         )}
@@ -189,7 +194,7 @@ const quickActions = [
     label: "New order",
     description: "Turn a conversation into a sale",
     icon: Package,
-    tone: "bg-brand-soft text-brand-soft-text",
+    tone: "bg-brand text-brand-ink",
   },
   {
     href: "/capture/?new=1",

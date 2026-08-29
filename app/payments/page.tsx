@@ -86,7 +86,7 @@ function PaymentsScreen() {
       />
 
       <div className="mb-4 grid grid-cols-3 gap-2.5">
-        <StatTile label="In today" value={money(receivedToday, { compact: true })} />
+        <StatTile label="In today" unit="KES" value={money(receivedToday, { compact: true, bare: true })} />
         <StatTile
           label="Unmatched"
           value={String(unmatched.length)}

@@ -72,8 +72,10 @@ export function BarChart({
             >
               <span
                 className={cn(
-                  "w-full rounded-t transition-[background-color,opacity] duration-150",
-                  isActive ? "bg-chart-series" : "bg-chart-series/30 group-hover:bg-chart-series/50",
+                  "w-full rounded-lg transition-[background-color,filter] duration-150",
+                  isActive
+                    ? "bg-chart-series"
+                    : "bg-chart-accent group-hover:brightness-95",
                 )}
                 style={{ height: barHeight }}
               />
@@ -156,8 +158,9 @@ export function TrendChart({
         >
           <defs>
             <linearGradient id="soko-trend-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--chart-series)" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="var(--chart-series)" stopOpacity="0" />
+              <stop offset="0%" stopColor="var(--lime-500)" stopOpacity="0.85" />
+              <stop offset="60%" stopColor="var(--lime-500)" stopOpacity="0.35" />
+              <stop offset="100%" stopColor="var(--lime-500)" stopOpacity="0.05" />
             </linearGradient>
           </defs>
           <path d={area} fill="url(#soko-trend-fill)" />
@@ -165,7 +168,7 @@ export function TrendChart({
             d={line}
             fill="none"
             stroke="var(--chart-series)"
-            strokeWidth="2"
+            strokeWidth="2.5"
             strokeLinejoin="round"
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
@@ -240,9 +243,9 @@ export function RankedBars({
               {valueFormat(d.value)}
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-surface-sunken">
+          <div className="h-2.5 overflow-hidden rounded-full bg-surface-sunken">
             <div
-              className="h-full rounded-full bg-chart-series transition-[width] duration-500"
+              className="h-full rounded-full bg-chart-accent transition-[width] duration-500"
               style={{ width: `${Math.max(2, (d.value / max) * 100)}%` }}
             />
           </div>
@@ -257,19 +260,22 @@ export function RankedBars({
 export function StatTile({
   label,
   value,
+  unit,
   sub,
   tone = "default",
   className,
 }: {
   label: string;
   value: string;
+  /** Currency or measure, shown beside the label so the number stays whole. */
+  unit?: string;
   sub?: React.ReactNode;
   tone?: "default" | "brand" | "danger" | "delivery";
   className?: string;
 }) {
   const tones = {
     default: "text-text",
-    brand: "text-brand",
+    brand: "text-brand-text",
     danger: "text-danger",
     delivery: "text-delivery",
   };
@@ -280,7 +286,10 @@ export function StatTile({
         className,
       )}
     >
-      <p className="text-[12px] font-semibold text-text-secondary">{label}</p>
+      <p className="flex items-baseline gap-1 text-[12px] font-semibold text-text-secondary">
+        <span className="truncate">{label}</span>
+        {unit && <span className="text-[10px] font-bold text-text-muted">{unit}</span>}
+      </p>
       <p
         className={cn(
           "tabular mt-1.5 truncate text-[17px] font-bold tracking-[-0.02em] sm:text-xl",

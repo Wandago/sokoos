@@ -98,7 +98,7 @@ function ProductsScreen() {
                   {product.emoji}
                 </span>
                 <p className="truncate text-[12px] font-semibold leading-tight">{product.name}</p>
-                <p className="tabular mt-1 text-[12px] font-bold text-brand">
+                <p className="tabular mt-1 text-[12px] font-bold text-brand-text">
                   {money(revenue, { compact: true })}
                 </p>
               </button>

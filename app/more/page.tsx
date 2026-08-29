@@ -7,7 +7,19 @@ import { Hydrated } from "@/components/ui/hydrated";
 import { SokoMark } from "@/components/soko-mark";
 import { useStore } from "@/lib/store";
 import { moreNav } from "@/lib/nav";
+import { cn } from "@/lib/cn";
 import { needsReviewCount } from "@/lib/selectors";
+
+const moduleTints = [
+  "bg-badge-3-bg text-badge-3-fg",
+  "bg-badge-1-bg text-badge-1-fg",
+  "bg-badge-4-bg text-badge-4-fg",
+  "bg-badge-2-bg text-badge-2-fg",
+  "bg-brand-soft text-brand-soft-text",
+  "bg-ai-soft text-ai-text",
+  "bg-delivery-soft text-delivery-text",
+  "bg-surface-sunken text-text-secondary",
+];
 
 export default function MorePage() {
   return (
@@ -46,8 +58,13 @@ function MoreScreen() {
                 i > 0 ? "border-t border-border-subtle" : ""
               }`}
             >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-text-secondary">
-                <item.icon className="size-[18px]" />
+              <span
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-xl",
+                  moduleTints[i % moduleTints.length],
+                )}
+              >
+                <item.icon className="size-[18px]" strokeWidth={2.1} />
               </span>
               <span className="flex-1 text-[15px] font-semibold">{item.label}</span>
               {count > 0 && (

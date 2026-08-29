@@ -185,6 +185,90 @@ export function ledgerTotals(db: Database, days = 30) {
   return { income, expenses, net: income - expenses, unreconciled: entries.filter((e) => !e.reconciled).length };
 }
 
+export interface PeriodComparison {
+  value: number;
+  previous: number;
+  change: number;
+  delta: number;
+}
+
+function compare(value: number, previous: number): PeriodComparison {
+  return {
+    value,
+    previous,
+    change: value - previous,
+    delta: previous > 0 ? ((value - previous) / previous) * 100 : 0,
+  };
+}
+
+/** This 30-day window against the one before it — what the stat cards report. */
+export function monthOverMonth(db: Database) {
+  const now = Date.now();
+  const thisStart = now - 30 * 86400000;
+  const lastStart = now - 60 * 86400000;
+
+  const inWindow = (iso: string, from: number, to: number) => {
+    const at = +new Date(iso);
+    return at >= from && at < to;
+  };
+
+  const live = db.orders.filter((o) => o.status !== "cancelled");
+  const thisOrders = live.filter((o) => inWindow(o.createdAt, thisStart, now));
+  const lastOrders = live.filter((o) => inWindow(o.createdAt, lastStart, thisStart));
+
+  const collected = (list: Order[]) =>
+    list
+      .filter(
+        (o) =>
+          o.paymentStatus === "paid" || (o.paymentStatus === "cod" && o.status === "delivered"),
+      )
+      .reduce((sum, o) => sum + orderTotal(o), 0);
+
+  const expenses = (from: number, to: number) =>
+    db.ledger
+      .filter((e) => e.type === "expense" && inWindow(e.date, from, to))
+      .reduce((sum, e) => sum + e.amount, 0);
+
+  return {
+    revenue: compare(collected(thisOrders), collected(lastOrders)),
+    orders: compare(thisOrders.length, lastOrders.length),
+    delivered: compare(
+      thisOrders.filter((o) => o.status === "delivered").length,
+      lastOrders.filter((o) => o.status === "delivered").length,
+    ),
+    spending: compare(expenses(thisStart, now), expenses(lastStart, thisStart)),
+  };
+}
+
+/** Income against spending, week by week, for the grouped chart. */
+export function weeklyIncomeVsSpending(db: Database, weeks = 8) {
+  const out: { label: string; a: number; b: number }[] = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    end.setDate(end.getDate() - i * 7);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+
+    const within = (iso: string) => {
+      const at = +new Date(iso);
+      return at >= +start && at <= +end;
+    };
+
+    out.push({
+      label: start.toLocaleDateString("en-KE", { day: "numeric", month: "short" }),
+      a: db.ledger
+        .filter((e) => e.type === "income" && within(e.date))
+        .reduce((sum, e) => sum + e.amount, 0),
+      b: db.ledger
+        .filter((e) => e.type === "expense" && within(e.date))
+        .reduce((sum, e) => sum + e.amount, 0),
+    });
+  }
+  return out;
+}
+
 /** Daily expense totals, so the spending card plots spending. */
 export function expenseSeries(db: Database, days = 7) {
   const points: { label: string; value: number }[] = [];

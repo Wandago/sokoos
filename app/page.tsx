@@ -5,18 +5,20 @@ import {
   ArrowRight,
   Bike,
   Boxes,
+  ChevronRight,
   Package,
   Plus,
   ScanLine,
   Sparkles,
-  TrendingDown,
-  TrendingUp,
+  Truck,
   Wallet,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { PageHeader, SectionTitle } from "@/components/ui/page";
+import { SectionTitle } from "@/components/ui/page";
 import { Hydrated } from "@/components/ui/hydrated";
-import { BarChart } from "@/components/ui/chart";
+import { BarChart, GoalMeter } from "@/components/ui/chart";
+import { StatCard, DeltaPill } from "@/components/ui/stat-card";
+import { CardMenu } from "@/components/ui/card-menu";
 import { OrderRow } from "@/components/order-row";
 import { BalanceCard } from "@/components/balance-card";
 import { Avatar } from "@/components/ui/avatar";
@@ -27,6 +29,7 @@ import {
   expenseSeries,
   ledgerTotals,
   lowStock,
+  monthOverMonth,
   quickSendCustomers,
   revenueSeries,
   smartInsight,
@@ -34,7 +37,7 @@ import {
   todayStats,
   unmatchedPayments,
 } from "@/lib/selectors";
-import { isSameDay, money, pct } from "@/lib/format";
+import { isSameDay, money, num } from "@/lib/format";
 
 export default function DashboardPage() {
   return (
@@ -54,6 +57,7 @@ function greeting() {
 function Dashboard() {
   const { db } = useStore();
   const stats = todayStats(db);
+  const mom = monthOverMonth(db);
   const series = revenueSeries(db, 7);
   const spending = expenseSeries(db, 7);
   const insight = smartInsight(db);
@@ -62,68 +66,122 @@ function Dashboard() {
   const totals = ledgerTotals(db, 30);
   const spentToday = todayExpenses(db);
 
-  const todaysOrders = db.orders.filter((o) => isSameDay(o.createdAt, new Date())).slice(0, 5);
-  const recent = todaysOrders.length ? todaysOrders : db.orders.slice(0, 5);
+  // A weekly target from the business's own run rate, nudged up 10%.
+  const weekEarned = series.reduce((sum, d) => sum + d.revenue, 0);
+  const weeklyGoal = Math.max(
+    Math.round(((mom.revenue.value / 30) * 7 * 1.1) / 1000) * 1000,
+    1000,
+  );
+
+  // The card is headed "This week", so the delta must be week on week.
+  const fortnight = revenueSeries(db, 14);
+  const lastWeek = fortnight.slice(0, 7).reduce((sum, d) => sum + d.revenue, 0);
+  const weekDelta = lastWeek > 0 ? ((weekEarned - lastWeek) / lastWeek) * 100 : 0;
+
+  const todaysOrders = db.orders.filter((o) => isSameDay(o.createdAt, new Date())).slice(0, 4);
+  const recent = todaysOrders.length ? todaysOrders : db.orders.slice(0, 4);
 
   return (
     <>
-      <PageHeader
-        title={`${greeting()}, ${db.business.owner.split(" ")[0]}`}
-        subtitle={new Date().toLocaleDateString("en-KE", {
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-        })}
-      />
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-text-secondary">{greeting()},</p>
+          <h1 className="truncate text-[24px] font-extrabold leading-tight tracking-[-0.03em]">
+            {db.business.owner}
+          </h1>
+        </div>
+        <Link
+          href="/orders/?new=1"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-panel px-4 text-[13px] font-semibold text-panel-text"
+        >
+          <Plus className="size-4" strokeWidth={2.6} />
+          New order
+        </Link>
+      </div>
 
       <BalanceCard
         balance={totals.net}
         businessName={db.business.name}
         tillNumber={db.business.tillNumber}
         caption="Balance, last 30 days"
+        delta={mom.revenue.delta}
       />
 
       {/* The four things a seller reaches for all day. */}
       <div className="my-4 grid grid-cols-4 gap-2.5">
-        <ActionTile href="/orders/?new=1" icon={Package} label="Order" />
+        <ActionTile href="/orders/?new=1" icon={Package} label="Order" accent />
         <ActionTile href="/payments/?new=1" icon={Wallet} label="Payment" />
         <ActionTile href="/capture/?new=1" icon={ScanLine} label="Scan" />
         <ActionTile href="/deliveries" icon={Bike} label="Rider" />
       </div>
 
-      {/* Earning in lime, spending in forest — the reference pairing. */}
+      {/* Month-on-month metrics, the shape every reference dashboard uses. */}
       <div className="mb-4 grid grid-cols-2 gap-3">
+        <StatCard
+          label="Revenue"
+          hint="Money collected on paid and delivered orders in the last 30 days."
+          value={money(mom.revenue.value, { compact: true })}
+          icon={Wallet}
+          tint={4}
+          change={`${mom.revenue.change >= 0 ? "+" : "−"}${money(Math.abs(mom.revenue.change), { compact: true, bare: true })}`}
+          delta={mom.revenue.delta}
+        />
+        <StatCard
+          label="Orders"
+          hint="Orders placed in the last 30 days, excluding cancellations."
+          value={num(mom.orders.value)}
+          icon={Package}
+          tint={1}
+          change={`${mom.orders.change >= 0 ? "+" : "−"}${num(Math.abs(mom.orders.change))}`}
+          delta={mom.orders.delta}
+        />
+        <StatCard
+          label="Delivered"
+          hint="Orders that reached the customer in the last 30 days."
+          value={num(mom.delivered.value)}
+          icon={Truck}
+          tint={3}
+          change={`${mom.delivered.change >= 0 ? "+" : "−"}${num(Math.abs(mom.delivered.change))}`}
+          delta={mom.delivered.delta}
+        />
+        <StatCard
+          label="Spending"
+          hint="Stock, rider payouts and running costs in the last 30 days."
+          value={money(mom.spending.value, { compact: true })}
+          icon={Boxes}
+          tint={2}
+          change={`${mom.spending.change >= 0 ? "+" : "−"}${money(Math.abs(mom.spending.change), { compact: true, bare: true })}`}
+          delta={mom.spending.delta}
+          invert
+        />
+      </div>
+
+      {/* Earning in lime, spending in forest — the reference pairing. */}
+      <div className="mb-5 grid grid-cols-2 gap-3">
         <div className="rounded-card bg-brand p-4 text-brand-ink">
           <div className="flex items-center justify-between">
             <p className="text-[12px] font-bold">Earning</p>
-            {stats.revenueChange !== 0 && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-brand-ink/10 px-1.5 py-0.5 text-[10px] font-bold">
-                {stats.revenueChange >= 0 ? (
-                  <TrendingUp className="size-3" />
-                ) : (
-                  <TrendingDown className="size-3" />
-                )}
-                {pct(stats.revenueChange)}
-              </span>
-            )}
+            <CardMenu href="/analytics" label="Open analytics" />
           </div>
-          <p className="tabular mt-2 text-[22px] font-extrabold leading-none tracking-[-0.03em]">
+          <p className="tabular mt-1.5 text-[22px] font-extrabold leading-none tracking-[-0.03em]">
             {money(stats.revenue, { compact: true })}
           </p>
           <p className="mt-1.5 text-[11px] font-medium opacity-70">
             paid in today · {stats.orders} orders
           </p>
+          <GoalMeter current={weekEarned} target={weeklyGoal} className="mt-4" />
         </div>
 
         <div className="rounded-card bg-panel p-4 text-panel-text">
-          <p className="text-[12px] font-bold">Spending</p>
-          <p className="tabular mt-2 text-[22px] font-extrabold leading-none tracking-[-0.03em]">
+          <div className="flex items-center justify-between">
+            <p className="text-[12px] font-bold">Spending</p>
+            <CardMenu href="/ledger" label="Open ledger" />
+          </div>
+          <p className="tabular mt-1.5 text-[22px] font-extrabold leading-none tracking-[-0.03em]">
             {money(spentToday, { compact: true })}
           </p>
-          <p className="mt-1.5 text-[11px] font-medium text-panel-muted">
-            stock, riders and costs today
-          </p>
-          <div className="mt-3 flex items-end gap-1" aria-hidden>
+          <p className="mt-1.5 text-[11px] font-medium text-panel-muted">stock, riders and costs</p>
+          <div className="mt-4 flex h-[26px] items-end gap-1" aria-hidden>
             {spending.map((day, i) => {
               const max = Math.max(...spending.map((d) => d.value), 1);
               return (
@@ -131,10 +189,10 @@ function Dashboard() {
                   key={i}
                   className={
                     i === spending.length - 1
-                      ? "flex-1 rounded-sm bg-brand"
-                      : "flex-1 rounded-sm bg-white/20"
+                      ? "flex-1 rounded-t-[3px] bg-brand"
+                      : "flex-1 rounded-t-[3px] bg-white/20"
                   }
-                  style={{ height: Math.max(4, (day.value / max) * 28) }}
+                  style={{ height: Math.max(3, (day.value / max) * 26) }}
                 />
               );
             })}
@@ -142,26 +200,8 @@ function Dashboard() {
         </div>
       </div>
 
-      <div className="mb-5 grid grid-cols-3 gap-2.5">
-        <MiniStat label="Pending" value={String(stats.pending)} accent={stats.pending > 0} />
-        <MiniStat label="Delivered" value={String(stats.delivered)} />
-        <MiniStat
-          label="Unpaid"
-          value={money(stats.unpaid, { compact: true })}
-          danger={stats.unpaid > 0}
-        />
-      </div>
-
       {/* Quick Send */}
-      <SectionTitle
-        action={
-          <Link href="/customers" className="text-[13px] font-semibold text-brand-text">
-            See all
-          </Link>
-        }
-      >
-        Quick send
-      </SectionTitle>
+      <SectionTitle action={<SeeAll href="/customers" />}>Quick send</SectionTitle>
       <div className="no-scrollbar -mx-4 mb-6 flex gap-3.5 overflow-x-auto px-4 pb-1">
         {quickSendCustomers(db).map((customer) => (
           <Link
@@ -169,7 +209,9 @@ function Dashboard() {
             href={`/customers/?id=${customer.id}`}
             className="flex w-14 shrink-0 flex-col items-center gap-1.5"
           >
-            <Avatar name={customer.name} size="lg" className="size-12 ring-2 ring-surface" />
+            <span className="rounded-full p-0.5 ring-2 ring-brand">
+              <Avatar name={customer.name} className="size-11" />
+            </span>
             <span className="w-full truncate text-center text-[11px] font-medium text-text-secondary">
               {customer.name.split(" ")[0]}
             </span>
@@ -185,13 +227,21 @@ function Dashboard() {
 
       {/* Last 7 days */}
       <Card className="mb-5 p-4">
-        <div className="mb-1 flex items-baseline justify-between">
-          <h2 className="text-[13px] font-bold">Last 7 days</h2>
-          <Link href="/analytics" className="text-[12px] font-semibold text-brand-text">
-            Analytics
-          </Link>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[14px] font-bold">This week</h2>
+            <p className="mt-0.5 text-[11px] text-text-secondary">Collected per day</p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <DeltaPill delta={weekDelta} />
+            <CardMenu href="/analytics" label="Open analytics" />
+          </div>
         </div>
-        <BarChart data={series.map((d) => ({ label: d.label, value: d.revenue }))} height={104} />
+        <BarChart
+          data={series.map((d) => ({ label: d.label, value: d.revenue }))}
+          height={112}
+          hideHeadline
+        />
       </Card>
 
       {/* Smart insight — one sentence, always explainable. */}
@@ -236,16 +286,7 @@ function Dashboard() {
         </>
       )}
 
-      <SectionTitle
-        action={
-          <Link
-            href="/orders"
-            className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand-text"
-          >
-            See all <ArrowRight className="size-3.5" />
-          </Link>
-        }
-      >
+      <SectionTitle action={<SeeAll href="/orders" />}>
         {todaysOrders.length ? "Today's orders" : "Recent orders"}
       </SectionTitle>
       {recent.length ? (
@@ -265,48 +306,41 @@ function Dashboard() {
   );
 }
 
-function ActionTile({
-  href,
-  icon: Icon,
-  label,
-}: {
-  href: string;
-  icon: typeof Package;
-  label: string;
-}) {
+function SeeAll({ href }: { href: string }) {
   return (
     <Link
       href={href}
-      className="flex flex-col items-center gap-2 rounded-2xl border border-border-subtle bg-surface py-3.5 shadow-card transition-colors hover:bg-surface-hover"
+      className="inline-flex items-center gap-0.5 text-[13px] font-semibold text-brand-text"
     >
-      <Icon className="size-[19px] text-text" strokeWidth={2.1} />
-      <span className="text-[11px] font-semibold">{label}</span>
+      See all
+      <ChevronRight className="size-3.5" />
     </Link>
   );
 }
 
-function MiniStat({
+function ActionTile({
+  href,
+  icon: Icon,
   label,
-  value,
   accent,
-  danger,
 }: {
+  href: string;
+  icon: typeof Package;
   label: string;
-  value: string;
   accent?: boolean;
-  danger?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-border-subtle bg-surface p-3 shadow-card">
-      <p className="text-[11px] font-semibold text-text-secondary">{label}</p>
-      <p
-        className={`tabular mt-1 truncate text-[17px] font-bold tracking-[-0.02em] ${
-          danger ? "text-danger" : accent ? "text-brand-text" : ""
-        }`}
-      >
-        {value}
-      </p>
-    </div>
+    <Link
+      href={href}
+      className={
+        accent
+          ? "flex flex-col items-center gap-2 rounded-2xl bg-brand py-3.5 text-brand-ink shadow-card transition-[filter] hover:brightness-95"
+          : "flex flex-col items-center gap-2 rounded-2xl border border-border-subtle bg-surface py-3.5 shadow-card transition-colors hover:bg-surface-hover"
+      }
+    >
+      <Icon className="size-[19px]" strokeWidth={2.1} />
+      <span className="text-[11px] font-semibold">{label}</span>
+    </Link>
   );
 }
 

@@ -10,6 +10,7 @@ import { LoadMore } from "@/components/ui/load-more";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
+import { AmountKeypad } from "@/components/ui/amount-keypad";
 import { Badge, ConfidenceMeter, PaymentStateBadge } from "@/components/ui/badge";
 import { StatTile } from "@/components/ui/chart";
 import { useToast } from "@/components/ui/toast";
@@ -324,6 +325,7 @@ function MatchSheet({ payment, onClose }: { payment: Payment; onClose: () => voi
 function RecordPaymentSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { db, recordPayment } = useStore();
   const toast = useToast();
+  const [step, setStep] = useState<"amount" | "details">("amount");
   const [orderId, setOrderId] = useState("");
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("mpesa");
@@ -331,99 +333,114 @@ function RecordPaymentSheet({ open, onClose }: { open: boolean; onClose: () => v
 
   const order = db.orders.find((o) => o.id === orderId);
   const customer = order ? customerOf(db, order) : undefined;
+  const value = Number(amount) || 0;
+
+  const close = () => {
+    setStep("amount");
+    setOrderId("");
+    setAmount("");
+    setReference("");
+    onClose();
+  };
 
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={close}
       title="Record a payment"
-      description="Log money that came in outside the app."
+      description={
+        step === "amount"
+          ? "How much came in?"
+          : "Where it came from, so the ledger reconciles itself."
+      }
+      size="lg"
       footer={
-        <Button
-          full
-          size="lg"
-          disabled={!amount}
-          onClick={() => {
-            recordPayment({
-              orderId: orderId || undefined,
-              customerId: order?.customerId,
-              customerName: customer?.name ?? "Walk-in customer",
-              method,
-              amount: Number(amount) || 0,
-              reference: reference.trim(),
-            });
-            setOrderId("");
-            setAmount("");
-            setReference("");
-            onClose();
-            toast("Payment received.");
-          }}
-        >
-          {amount ? `Record ${money(Number(amount))}` : "Record payment"}
-        </Button>
+        step === "amount" ? (
+          <Button full size="lg" disabled={value <= 0} onClick={() => setStep("details")}>
+            Continue · {money(value)}
+          </Button>
+        ) : (
+          <div className="flex gap-2.5">
+            <Button variant="secondary" onClick={() => setStep("amount")}>
+              Back
+            </Button>
+            <Button
+              full
+              size="lg"
+              onClick={() => {
+                recordPayment({
+                  orderId: orderId || undefined,
+                  customerId: order?.customerId,
+                  customerName: customer?.name ?? "Walk-in customer",
+                  method,
+                  amount: value,
+                  reference: reference.trim(),
+                });
+                close();
+                toast("Payment received.");
+              }}
+            >
+              Record {money(value)}
+            </Button>
+          </div>
+        )
       }
     >
-      <div className="space-y-4 pb-4">
-        <Field label="Amount">
-          <Input
-            prefix="KES"
-            inputMode="numeric"
-            placeholder="0"
+      {step === "amount" ? (
+        <div className="pb-4 pt-2">
+          <AmountKeypad
             value={amount}
-            onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+            onChange={setAmount}
+            quickAmounts={[500, 1000, 2500, 5000, 10000]}
           />
-        </Field>
-
-        <Field label="Method">
-          <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
-            {Object.entries(methodLabel).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field
-          label="Order"
-          hint="Leave empty and you can match it later from the payments list."
-        >
-          <Select
-            value={orderId}
-            onChange={(e) => {
-              setOrderId(e.target.value);
-              const next = db.orders.find((o) => o.id === e.target.value);
-              if (next && !amount) setAmount(String(orderTotal(next)));
-            }}
-          >
-            <option value="">No order yet</option>
-            {db.orders
-              .filter((o) => o.paymentStatus !== "paid" && o.status !== "cancelled")
-              .map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.code} · {customerOf(db, o)?.name} · {money(orderTotal(o))}
+        </div>
+      ) : (
+        <div className="space-y-4 pb-4">
+          <Field label="Method">
+            <Select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
+              {Object.entries(methodLabel).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
                 </option>
               ))}
-          </Select>
-        </Field>
-
-        {method === "mpesa" && (
-          <Field label="M-Pesa code" hint="The confirmation code from the SMS.">
-            <Input
-              placeholder="QK73H2MN9P"
-              value={reference}
-              onChange={(e) => setReference(e.target.value.toUpperCase())}
-            />
+            </Select>
           </Field>
-        )}
 
-        {order && (
-          <div className="flex items-center gap-2 rounded-2xl bg-success-soft p-3.5 text-[13px] text-success-text">
-            <Check className="size-4 shrink-0" strokeWidth={2.5} />
-            This will settle {order.code} for {customer?.name}.
-          </div>
-        )}
-      </div>
+          <Field
+            label="Order"
+            hint="Leave empty and you can match it later from the payments list."
+          >
+            <Select value={orderId} onChange={(e) => setOrderId(e.target.value)}>
+              <option value="">No order yet</option>
+              {db.orders
+                .filter((o) => o.paymentStatus !== "paid" && o.status !== "cancelled")
+                .slice(0, 60)
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.code} · {customerOf(db, o)?.name} · {money(orderTotal(o))}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+
+          {method === "mpesa" && (
+            <Field label="M-Pesa code" hint="The confirmation code from the SMS.">
+              <Input
+                placeholder="QK73H2MN9P"
+                value={reference}
+                onChange={(e) => setReference(e.target.value.toUpperCase())}
+              />
+            </Field>
+          )}
+
+          {order && (
+            <div className="flex items-center gap-2 rounded-2xl bg-success-soft p-3.5 text-[13px] text-success-text">
+              <Check className="size-4 shrink-0" strokeWidth={2.5} />
+              This will settle {order.code} for {customer?.name}.
+            </div>
+          )}
+        </div>
+      )}
     </Sheet>
   );
 }

@@ -68,9 +68,13 @@ rewriting one file.
 ## Design system
 
 Tokens live in `app/globals.css` — a semantic layer (`--surface`, `--text`,
-`--brand`, `--ai`, `--delivery`, plus the financial states) that every component
-reads, which is what makes light and dark mode a token swap rather than a
-per-component chore.
+`--brand`, `--panel`, `--ai`, `--delivery`, plus the financial states) that every
+component reads, which is what makes light and dark mode a token swap rather
+than a per-component chore.
+
+The shell is a forest header — logo, search, alerts, avatar — with the light
+content sheet rounding up over it, and a floating forest pill for navigation
+whose active tab expands into a lime label.
 
 - **Primary** — electric lime (`#C3F53C`). It is a *fill*, never a text colour:
   `--brand` is the surface and `--brand-ink` (`#06160D`) is what sits on it.
@@ -81,10 +85,18 @@ per-component chore.
   for pending, red for failed. Used as accents, never as whole screens.
 - **Neutrals** — faintly green-tinted ink, never pure grey or pure black.
 - **Type** — Plus Jakarta Sans for headings, Inter for everything else, with
-  tabular numerals wherever money appears.
-- **Charts** — hand-rolled inline SVG/CSS, single-series. Lime is too light to
-  carry a series alone on white, so bars pair lime companions with a near-black
-  emphasis mark and every bar keeps a visible label.
+  tabular numerals wherever money appears. Money compacts only above 10,000, so
+  `KES 4,021` never rounds away to `KES 4K`.
+- **Metric cards** — label with an explainer, a tinted icon badge, the number,
+  what it moved against, and a signed delta pill that goes neutral when a period
+  is flat and inverts its colour for measures where a rise is bad.
+- **Charts** — hand-rolled inline SVG/CSS. Lime is too light to carry a series
+  alone on white, so columns pair lime companions with a near-black emphasis
+  mark and every column keeps a visible label. Axis ticks are built from a clean
+  step (0 / 20k / 40k), never by slicing the maximum. The readout is a pill that
+  inverts against its surface, so it reads on a white card and a forest one
+  alike. Paired series keep fixed roles across themes: money in is always the
+  lime one.
 
 Financial states are always visually distinct and never carried by colour alone:
 Paid, Part paid, Unpaid, Cash on delivery, Pending, Failed, Needs review.

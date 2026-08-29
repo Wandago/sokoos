@@ -1,22 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { TrendingDown, TrendingUp } from "lucide-react";
+import { Boxes, Package, Truck, Wallet } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui/page";
 import { Hydrated } from "@/components/ui/hydrated";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
-import { BarChart, RankedBars, StatTile, TrendChart } from "@/components/ui/chart";
-import { Badge } from "@/components/ui/badge";
+import { BarChart, GroupedBarChart, RankedBars, TrendChart } from "@/components/ui/chart";
+import { StatCard, DeltaPill } from "@/components/ui/stat-card";
+import { CardMenu } from "@/components/ui/card-menu";
 import { useStore } from "@/lib/store";
 import {
   channelBreakdown,
+  customerStats,
   ledgerTotals,
+  monthOverMonth,
+  weeklyIncomeVsSpending,
   revenueSeries,
   topProducts,
-  customerStats,
 } from "@/lib/selectors";
-import { channelLabel, money, pct } from "@/lib/format";
+import { channelLabel, money, num } from "@/lib/format";
 
 export default function AnalyticsPage() {
   return (
@@ -41,6 +44,8 @@ function AnalyticsScreen() {
   const secondHalf = series.slice(half).reduce((s, d) => s + d.revenue, 0);
   const change = firstHalf ? ((secondHalf - firstHalf) / firstHalf) * 100 : 0;
 
+  const mom = monthOverMonth(db);
+  const weekly = weeklyIncomeVsSpending(db, 8);
   const channels = channelBreakdown(db, days);
   const products = topProducts(db, 5);
   const totals = ledgerTotals(db, days);
@@ -69,13 +74,37 @@ function AnalyticsScreen() {
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatTile label="Revenue" value={money(revenue, { compact: true })} />
-        <StatTile label="Orders" value={String(orders)} />
-        <StatTile label="Average order" value={money(aov, { compact: true })} />
-        <StatTile
-          label="Profit"
-          value={money(totals.net, { compact: true })}
-          tone={totals.net >= 0 ? "brand" : "danger"}
+        <StatCard
+          label="Revenue"
+          hint={`Collected across the last ${days} days.`}
+          value={money(revenue, { compact: true })}
+          icon={Wallet}
+          tint={4}
+          delta={mom.revenue.delta}
+        />
+        <StatCard
+          label="Orders"
+          hint={`Orders placed in the last ${days} days.`}
+          value={num(orders)}
+          icon={Package}
+          tint={1}
+          delta={mom.orders.delta}
+        />
+        <StatCard
+          label="Average order"
+          hint="Revenue divided by orders in this window."
+          value={money(aov, { compact: true })}
+          icon={Truck}
+          tint={3}
+        />
+        <StatCard
+          label="Spending"
+          hint="Stock, rider payouts and running costs."
+          value={money(totals.expenses, { compact: true })}
+          icon={Boxes}
+          tint={2}
+          delta={mom.spending.delta}
+          invert
         />
       </div>
 
@@ -83,10 +112,10 @@ function AnalyticsScreen() {
         <CardHeader
           title="Revenue trend"
           action={
-            <Badge tone={change >= 0 ? "success" : "danger"}>
-              {change >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-              {pct(change)}
-            </Badge>
+            <span className="flex items-center gap-1.5">
+              <DeltaPill delta={change} />
+              <CardMenu href="/ledger" label="Open ledger" />
+            </span>
           }
         />
         <div className="px-4 pb-4">
@@ -105,8 +134,19 @@ function AnalyticsScreen() {
           <BarChart
             data={series.slice(-7).map((d) => ({ label: d.label, value: d.orders }))}
             valueFormat={(v) => `${v} orders`}
+            tickFormat={(v) => String(Math.round(v))}
             height={110}
           />
+        </div>
+      </Card>
+
+      <Card className="mb-4">
+        <CardHeader
+          title="Money in vs money out"
+          action={<CardMenu href="/ledger" label="Open ledger" />}
+        />
+        <div className="px-4 pb-4">
+          <GroupedBarChart data={weekly} seriesA="Money in" seriesB="Money out" />
         </div>
       </Card>
 

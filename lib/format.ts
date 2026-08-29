@@ -13,7 +13,11 @@ export function money(
   const abs = Math.abs(amount);
   const sign = opts?.sign ? (amount < 0 ? "−" : "+") : amount < 0 ? "−" : "";
   const unit = opts?.bare ? "" : "KES ";
-  if (opts?.compact && abs >= 1000) {
+  if (opts?.compact && abs >= 1_000_000) {
+    const m = abs / 1_000_000;
+    return `${sign}${unit}${m >= 100 ? Math.round(m) : m.toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (opts?.compact && abs >= 10_000) {
     const k = abs / 1000;
     return `${sign}${unit}${k >= 100 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, "")}K`;
   }

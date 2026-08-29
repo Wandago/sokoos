@@ -125,10 +125,11 @@ const orderRows: OrderRow[] = [
 ];
 
 /**
- * Trading history. Real volume matters here: with only a handful of orders on
- * past days every trend line and percentage in Analytics reads as nonsense.
+ * Trading history. Volume matters here twice over: with only a handful of
+ * orders per day every trend line reads as nonsense, and with less than two
+ * months of it the month-on-month deltas compare against an empty window.
  */
-function historyRows(days = 30): OrderRow[] {
+function historyRows(days = 75): OrderRow[] {
   const random = mulberry32(20260829);
   const rows: OrderRow[] = [];
 

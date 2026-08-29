@@ -114,11 +114,23 @@
   --ai-soft:       var(--violet-100);
   --ai-text:       #4227c4;
 
+  /* Icon-badge tints, one per metric. Decorative: they colour an icon, never
+     a datum, so they stay outside the chart palette. */
+  --badge-1-bg: #FDF0DA;  --badge-1-fg: #A96A0B;
+  --badge-2-bg: #FDE4DE;  --badge-2-fg: #B5482F;
+  --badge-3-bg: #E4E6FD;  --badge-3-fg: #3D45B0;
+  --badge-4-bg: #DFF3E4;  --badge-4-fg: #1F7A44;
+
   /* Charts: a near-black emphasis mark against lime companions — the pairing
      the reference designs use, and what keeps lime legible on white. */
   --chart-series: var(--forest-900);
   --chart-accent: var(--lime-500);
   --chart-grid:   var(--ink-100);
+
+  /* Paired series keep fixed roles across themes: money in is always the
+     lime one, money out always the recessive one. */
+  --chart-a: var(--lime-500);
+  --chart-b: var(--forest-900);
 
   --shadow-sm: 0 1px 2px 0 rgb(10 15 11 / 0.05);
   --shadow-md: 0 4px 16px -2px rgb(10 15 11 / 0.08), 0 2px 4px -2px rgb(10 15 11 / 0.04);
@@ -175,9 +187,17 @@
   --ai-soft:       #1c1440;
   --ai-text:       #cfc2ff;
 
+  --badge-1-bg: #3A2C12;  --badge-1-fg: #F0C173;
+  --badge-2-bg: #3A211B;  --badge-2-fg: #F3A08B;
+  --badge-3-bg: #1E2043;  --badge-3-fg: #A8AEF5;
+  --badge-4-bg: #14301E;  --badge-4-fg: #7FD09A;
+
   --chart-series: var(--lime-500);
-  --chart-accent: #2F5B23;
+  --chart-accent: #55882A;
   --chart-grid:   #1B2E20;
+
+  --chart-a: var(--lime-500);
+  --chart-b: #5E7A62;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   --shadow-md: 0 4px 16px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.3);
@@ -230,8 +250,19 @@
   --color-ai-soft: var(--ai-soft);
   --color-ai-text: var(--ai-text);
 
+  --color-badge-1-bg: var(--badge-1-bg);
+  --color-badge-1-fg: var(--badge-1-fg);
+  --color-badge-2-bg: var(--badge-2-bg);
+  --color-badge-2-fg: var(--badge-2-fg);
+  --color-badge-3-bg: var(--badge-3-bg);
+  --color-badge-3-fg: var(--badge-3-fg);
+  --color-badge-4-bg: var(--badge-4-bg);
+  --color-badge-4-fg: var(--badge-4-fg);
+
   --color-chart-series: var(--chart-series);
   --color-chart-accent: var(--chart-accent);
+  --color-chart-a: var(--chart-a);
+  --color-chart-b: var(--chart-b);
   --color-chart-grid: var(--chart-grid);
 
   --color-lime-100: var(--lime-100);
@@ -309,6 +340,12 @@
   .pt-safe { padding-top: env(safe-area-inset-top); }
   .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
   .mb-safe { margin-bottom: env(safe-area-inset-bottom); }
+
+  /* The light content sheet that rounds up over the forest header. */
+  .content-sheet {
+    border-top-left-radius: 1.75rem;
+    border-top-right-radius: 1.75rem;
+  }
 
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

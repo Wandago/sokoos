@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Bell, MoreHorizontal, Plus, ScanLine, Wallet, Package } from "lucide-react";
+import { Bell, MoreHorizontal, Package, Plus, ScanLine, Search, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useStore } from "@/lib/store";
 import { needsReviewCount, unreadCount } from "@/lib/selectors";
 import { allNav, primaryNav } from "@/lib/nav";
 import { Sheet } from "./ui/sheet";
+import { Avatar } from "./ui/avatar";
 import { InstallPrompt } from "./install-prompt";
 import { SokoMark } from "./soko-mark";
 
@@ -52,7 +53,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors",
+                  "flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors",
                   active
                     ? "bg-panel text-brand"
                     : "text-text-secondary hover:bg-surface-hover hover:text-text",
@@ -82,40 +83,44 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
 
       {/* ---- Main column ------------------------------------------------ */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="pt-safe sticky top-0 z-30 border-b border-border-subtle bg-bg/85 backdrop-blur-lg lg:hidden">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <SokoMark className="size-9" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-bold leading-tight tracking-tight">
-                {db.business.name}
-              </p>
-              <p className="truncate text-[11px] text-text-secondary">
-                Till {db.business.tillNumber} · {db.business.location}
-              </p>
-            </div>
+        {/* Forest header. The content sheet below rounds up over it, which is
+            what gives the app its depth on a phone. */}
+        <header className="pt-safe relative bg-panel px-4 pb-9 lg:hidden">
+          <div className="flex items-center gap-2.5 pt-3">
+            <SokoMark className="size-10 shrink-0" />
+            <Link
+              href="/orders"
+              className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-full bg-white/10 px-3.5 text-panel-muted transition-colors hover:bg-white/15"
+            >
+              <Search className="size-4 shrink-0" />
+              <span className="truncate text-[13px] font-medium">Search orders</span>
+            </Link>
             <Link
               href="/payments"
               aria-label="Alerts"
-              className="relative inline-flex size-10 items-center justify-center rounded-full border border-border-subtle bg-surface text-text-secondary hover:bg-surface-hover"
+              className="relative inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/15"
             >
               <Bell className="size-[18px]" />
               {badges.review > 0 && (
-                <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-danger ring-2 ring-surface" />
+                <span className="absolute right-2 top-2 size-2 rounded-full bg-brand ring-2 ring-panel" />
               )}
+            </Link>
+            <Link href="/settings" aria-label="Settings" className="shrink-0">
+              <Avatar name={db.business.owner} className="size-10 ring-2 ring-white/20" />
             </Link>
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-4 lg:px-8 lg:pb-12 lg:pt-8">
-          {children}
+        <main className="content-sheet relative -mt-6 min-h-[60vh] flex-1 bg-bg px-4 pb-32 pt-5 lg:mt-0 lg:rounded-none lg:px-8 lg:pb-12 lg:pt-8">
+          <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>
 
       {/* ---- Mobile bottom navigation -----------------------------------
-           A floating forest pill with a lime action key in the middle, so the
-           three things a seller does all day are one thumb-reach apart. */}
+           A floating forest pill. The active tab expands into a lime label
+           pill; the rest stay icon-only, so the bar never crowds. */}
       <nav className="pb-safe fixed inset-x-0 bottom-0 z-40 px-4 pb-3 lg:hidden">
-        <div className="mx-auto flex max-w-sm items-center justify-between gap-1 rounded-pill bg-panel px-3 py-2.5 shadow-float">
+        <div className="mx-auto flex max-w-sm items-center gap-1 rounded-pill bg-panel p-2 shadow-float">
           {primaryNav.map((item) => (
             <NavTab
               key={item.href}
@@ -126,13 +131,6 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               count={item.badge ? badges[item.badge] : 0}
             />
           ))}
-          <button
-            onClick={() => setQuickOpen(true)}
-            aria-label="Quick actions"
-            className="mx-1 inline-flex size-12 shrink-0 items-center justify-center rounded-2xl bg-brand text-brand-ink transition-transform active:scale-95"
-          >
-            <Plus className="size-6" strokeWidth={2.6} />
-          </button>
           <NavTab
             href="/more"
             label="More"
@@ -143,6 +141,13 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
             }
             count={0}
           />
+          <button
+            onClick={() => setQuickOpen(true)}
+            aria-label="Quick actions"
+            className="ml-0.5 inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-brand text-brand-ink transition-transform active:scale-95"
+          >
+            <Plus className="size-[22px]" strokeWidth={2.6} />
+          </button>
         </div>
       </nav>
 
@@ -171,19 +176,21 @@ function NavTab({
       aria-label={label}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl text-[10px] font-semibold transition-colors",
-        active ? "bg-panel-raised text-brand" : "text-panel-muted hover:text-white",
+        "relative flex h-11 items-center justify-center gap-2 rounded-full text-[12px] font-bold transition-[background-color,color,flex] duration-200",
+        active
+          ? "flex-1 bg-brand px-3 text-brand-ink"
+          : "w-11 shrink-0 text-panel-muted hover:text-white",
       )}
     >
-      <span className="relative">
-        <Icon className="size-[21px]" strokeWidth={active ? 2.4 : 2} />
-        {count > 0 && (
-          <span className="tabular absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-[9px] font-bold leading-4 text-brand-ink">
+      <span className="relative shrink-0">
+        <Icon className="size-[20px]" strokeWidth={active ? 2.5 : 2} />
+        {count > 0 && !active && (
+          <span className="tabular absolute -right-2 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-[9px] font-bold leading-4 text-brand-ink">
             {count > 9 ? "9+" : count}
           </span>
         )}
       </span>
-      {label}
+      {active && <span className="truncate">{label}</span>}
     </Link>
   );
 }
@@ -201,14 +208,14 @@ const quickActions = [
     label: "Scan a receipt",
     description: "Receipt, M-Pesa message or statement",
     icon: ScanLine,
-    tone: "bg-ai-soft text-ai-text",
+    tone: "bg-panel text-brand",
   },
   {
     href: "/payments/?new=1",
     label: "Record a payment",
     description: "M-Pesa, cash or bank transfer",
     icon: Wallet,
-    tone: "bg-success-soft text-success-text",
+    tone: "bg-badge-4-bg text-badge-4-fg",
   },
 ];
 
@@ -225,7 +232,7 @@ function QuickActions({ open, onClose }: { open: boolean; onClose: () => void })
           >
             <span
               className={cn(
-                "flex size-11 shrink-0 items-center justify-center rounded-xl",
+                "flex size-11 shrink-0 items-center justify-center rounded-2xl",
                 action.tone,
               )}
             >

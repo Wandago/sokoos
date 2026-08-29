@@ -1,0 +1,315 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ *
+ * SokoOS — Social Commerce Operating System
+ * Design tokens. Everything in the UI reads from the semantic layer
+ * below, so light/dark stay consistent without per-component overrides.
+ * ------------------------------------------------------------------ */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  /* ---- Raw palette -------------------------------------------------- */
+
+  /* Primary — "Soko Green". Commerce, action, confidence.
+     Deliberately deeper and cooler than M-Pesa green so it reads as
+     our brand, not a payment provider's. */
+  --green-50:  #e6faf1;
+  --green-100: #c4f3e0;
+  --green-200: #8fe7c4;
+  --green-300: #52d5a3;
+  --green-400: #1fbc85;
+  --green-500: #06a06d;
+  --green-600: #018059;
+  --green-700: #046349;
+  --green-800: #084f3b;
+  --green-900: #0a4132;
+  --green-950: #03261d;
+
+  /* Ink — green-tinted neutrals. Never pure grey, never pure black. */
+  --ink-50:  #f2f6f4;
+  --ink-100: #e4eae7;
+  --ink-200: #ccd5d0;
+  --ink-300: #a8b4ae;
+  --ink-400: #7b8a83;
+  --ink-500: #56675f;
+  --ink-600: #3a4a43;
+  --ink-700: #23332d;
+  --ink-800: #16241f;
+  --ink-900: #0d1b17;
+  --ink-950: #071310;
+
+  /* Supporting hues, one per product concern */
+  --violet-100: #e9e4fe;  /* AI / Smart Capture */
+  --violet-500: #6e56f8;
+  --violet-600: #5a3fe4;
+  --violet-950: #241a5c;
+
+  --cyan-100: #d9f0fb;    /* Delivery / riders */
+  --cyan-500: #0b8fc7;
+  --cyan-600: #0a74a3;
+  --cyan-950: #0a2f42;
+
+  --amber-100: #fdefd5;   /* Pending / warning */
+  --amber-500: #e0940f;
+  --amber-600: #b4740a;
+  --amber-950: #402a05;
+
+  --rose-100: #fde3e3;    /* Failed / error */
+  --rose-500: #d93a3a;
+  --rose-600: #b62d2d;
+  --rose-950: #451414;
+
+  /* ---- Semantic layer (light) --------------------------------------- */
+  --bg:              var(--ink-50);
+  --bg-elevated:     #ffffff;
+  --surface:         #ffffff;
+  --surface-sunken:  var(--ink-50);
+  --surface-hover:   var(--ink-50);
+  --border:          var(--ink-200);
+  --border-subtle:   var(--ink-100);
+  --border-strong:   var(--ink-300);
+
+  --text:            var(--ink-900);
+  --text-secondary:  var(--ink-500);
+  --text-muted:      var(--ink-400);
+  --text-inverted:   #ffffff;
+
+  --brand:           var(--green-600);
+  --brand-hover:     var(--green-700);
+  --brand-soft:      var(--green-50);
+  --brand-soft-text: var(--green-800);
+  --brand-ring:      color-mix(in oklab, var(--green-500) 35%, transparent);
+
+  --success:      var(--green-600);
+  --success-soft: var(--green-50);
+  --success-text: var(--green-800);
+
+  --pending:      var(--amber-600);
+  --pending-soft: var(--amber-100);
+  --pending-text: #7a4e05;
+
+  --danger:       var(--rose-500);
+  --danger-hover: var(--rose-600);
+  --danger-soft:  var(--rose-100);
+  --danger-text:  #8f2323;
+
+  --delivery:      var(--cyan-600);
+  --delivery-soft: var(--cyan-100);
+  --delivery-text: #075a80;
+
+  --ai:            var(--violet-600);
+  --ai-soft:       var(--violet-100);
+  --ai-text:       #4227c4;
+
+  /* Chart series colour, validated for contrast + CVD on this surface. */
+  --chart-series: #018059;
+  --chart-grid: var(--ink-100);
+
+  --shadow-sm: 0 1px 2px 0 rgb(7 19 16 / 0.05);
+  --shadow-md: 0 4px 12px -2px rgb(7 19 16 / 0.08), 0 2px 4px -2px rgb(7 19 16 / 0.04);
+  --shadow-lg: 0 16px 40px -8px rgb(7 19 16 / 0.16), 0 4px 12px -4px rgb(7 19 16 / 0.06);
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg:              var(--ink-950);
+  --bg-elevated:     var(--ink-900);
+  --surface:         var(--ink-900);
+  --surface-sunken:  #0a1714;
+  --surface-hover:   var(--ink-800);
+  --border:          #23332d;
+  --border-subtle:   #1a2823;
+  --border-strong:   #3a4a43;
+
+  --text:            #eaf1ee;
+  --text-secondary:  var(--ink-300);
+  --text-muted:      var(--ink-400);
+  --text-inverted:   var(--ink-950);
+
+  --brand:           var(--green-400);
+  --brand-hover:     var(--green-300);
+  --brand-soft:      #0b2b22;
+  --brand-soft-text: var(--green-200);
+  --brand-ring:      color-mix(in oklab, var(--green-400) 40%, transparent);
+
+  --success:      var(--green-400);
+  --success-soft: #0b2b22;
+  --success-text: var(--green-200);
+
+  --pending:      #f0b44a;
+  --pending-soft: #2e2209;
+  --pending-text: #f7d59a;
+
+  --danger:       #f36b6b;
+  --danger-hover: #ff8585;
+  --danger-soft:  #34110f;
+  --danger-text:  #fbb9b9;
+
+  --delivery:      #4cb8e8;
+  --delivery-soft: #08222f;
+  --delivery-text: #a8ddf5;
+
+  --ai:            #9c86ff;
+  --ai-soft:       #1c1440;
+  --ai-text:       #cfc2ff;
+
+  --chart-series: #06a06d;
+  --chart-grid: #1a2823;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 16px 40px -8px rgb(0 0 0 / 0.6), 0 4px 12px -4px rgb(0 0 0 / 0.4);
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  --color-text: var(--text);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverted: var(--text-inverted);
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-soft-text: var(--brand-soft-text);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-text: var(--success-text);
+  --color-pending: var(--pending);
+  --color-pending-soft: var(--pending-soft);
+  --color-pending-text: var(--pending-text);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
+  --color-delivery: var(--delivery);
+  --color-delivery-soft: var(--delivery-soft);
+  --color-delivery-text: var(--delivery-text);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
+  --color-ai-text: var(--ai-text);
+
+  --color-chart-series: var(--chart-series);
+  --color-chart-grid: var(--chart-grid);
+
+  --color-green-50: var(--green-50);
+  --color-green-100: var(--green-100);
+  --color-green-200: var(--green-200);
+  --color-green-300: var(--green-300);
+  --color-green-400: var(--green-400);
+  --color-green-500: var(--green-500);
+  --color-green-600: var(--green-600);
+  --color-green-700: var(--green-700);
+  --color-green-800: var(--green-800);
+  --color-green-900: var(--green-900);
+  --color-green-950: var(--green-950);
+
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-display), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-card: var(--shadow-sm);
+  --shadow-raised: var(--shadow-md);
+  --shadow-overlay: var(--shadow-lg);
+
+  --radius-card: 1rem;
+  --radius-sheet: 1.5rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+
+  /* Numbers in a financial product must line up. Always. */
+  .tabular,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--brand-soft);
+    color: var(--brand-soft-text);
+  }
+}
+
+@layer utilities {
+  /* Respect the notch / home indicator on installed iOS PWAs */
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .mb-safe { margin-bottom: env(safe-area-inset-bottom); }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .ring-brand-soft { box-shadow: 0 0 0 4px var(--brand-ring); }
+}
+
+/* Motion communicates state, never decoration. */
+@keyframes soko-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes soko-sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes soko-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes soko-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(200%); }
+}
+
+.animate-rise  { animation: soko-rise .28s cubic-bezier(.22,.8,.36,1) both; }
+.animate-sheet { animation: soko-sheet-up .3s cubic-bezier(.22,.8,.36,1) both; }
+.animate-fade  { animation: soko-fade .2s ease both; }
+.animate-sweep { animation: soko-sweep 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

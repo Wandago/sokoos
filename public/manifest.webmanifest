@@ -1,0 +1,46 @@
+{
+  "name": "SokoOS — Social Commerce OS",
+  "short_name": "SokoOS",
+  "description": "The operating system for businesses that sell everywhere. Orders, payments, M-Pesa, delivery and your ledger in one place.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#f2f6f4",
+  "theme_color": "#018059",
+  "lang": "en-KE",
+  "dir": "ltr",
+  "categories": ["business", "finance", "productivity", "shopping"],
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "New order",
+      "short_name": "New order",
+      "description": "Record a sale from a conversation",
+      "url": "/orders/?new=1",
+      "icons": [{ "src": "/icons/shortcut-order.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Scan a receipt",
+      "short_name": "Scan",
+      "description": "Capture a receipt or M-Pesa message",
+      "url": "/capture/?new=1",
+      "icons": [{ "src": "/icons/shortcut-order.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Record a payment",
+      "short_name": "Payment",
+      "description": "Log an M-Pesa, cash or bank payment",
+      "url": "/payments/?new=1",
+      "icons": [{ "src": "/icons/shortcut-order.png", "sizes": "96x96" }]
+    }
+  ]
+}

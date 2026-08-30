@@ -1,15 +1,19 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Bike,
+  CalendarClock,
   Check,
+  ChevronRight,
   MapPin,
   MessageCircle,
   Package,
   Phone,
   Plus,
   Trash2,
+  UserRound,
   Wallet,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page";
@@ -183,6 +187,20 @@ const nextStep: Partial<Record<OrderStatus, { status: OrderStatus; label: string
   out_for_delivery: { status: "delivered", label: "Mark as delivered" },
 };
 
+/**
+ * A job is not packed and does not go out for delivery.
+ *
+ * The states underneath are the same, so payments and the ledger do not need
+ * to know the difference — but "packed" is meaningless for a fitting, so the
+ * words change and the packing step is skipped entirely.
+ */
+const nextBookingStep: Partial<Record<OrderStatus, { status: OrderStatus; label: string }>> = {
+  new: { status: "confirmed", label: "Confirm the booking" },
+  confirmed: { status: "out_for_delivery", label: "Start the job" },
+  packed: { status: "out_for_delivery", label: "Start the job" },
+  out_for_delivery: { status: "delivered", label: "Mark it done" },
+};
+
 function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const { db, setOrderStatus, assignRider, recordPayment } = useStore();
   const toast = useToast();
@@ -192,7 +210,10 @@ function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => voi
   if (!order) return null;
   const customer = customerOf(db, order);
   const rider = riderOf(db, order);
-  const step = nextStep[order.status];
+  const service = order.booking
+    ? db.services.find((s) => s.id === order.booking!.serviceId)
+    : undefined;
+  const step = (order.booking ? nextBookingStep : nextStep)[order.status];
   const paid = db.payments
     .filter((p) => p.orderId === order.id && p.state === "received")
     .reduce((sum, p) => sum + p.amount, 0);
@@ -293,10 +314,13 @@ function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => voi
             <Divider />
             <div className="space-y-2 p-3.5 text-[13px]">
               <Line label="Goods" value={money(orderSubtotal(order))} />
-              <Line
-                label={`Delivery — ${deliveryNote[settlementOf(order)]}`}
-                value={money(order.deliveryFee)}
-              />
+              {/* A job done at the shop has no trip to account for. */}
+              {(order.deliveryFee > 0 || !order.booking) && (
+                <Line
+                  label={`Delivery — ${deliveryNote[settlementOf(order)]}`}
+                  value={money(order.deliveryFee)}
+                />
+              )}
               <Divider className="my-1" />
               {/* The two numbers are different whenever the rider is paid at
                   the door, and conflating them is how a seller ends up
@@ -341,7 +365,64 @@ function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => voi
           </div>
         </div>
 
-        {/* Delivery */}
+        {/* A booking has an appointment where an order has a delivery. */}
+        {order.booking ? (
+          <div>
+            <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.06em] text-text-secondary">
+              The appointment
+            </p>
+            <div className="rounded-2xl border border-border-subtle bg-surface p-3.5">
+              <div className="flex items-start gap-2.5">
+                <CalendarClock className="mt-0.5 size-4 shrink-0 text-text-muted" />
+                <div>
+                  <p className="text-[14px] font-semibold">
+                    {fullDate(order.booking.startsAt)} at {clockTime(order.booking.startsAt)}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-text-secondary">
+                    {order.booking.durationMinutes} minutes ·{" "}
+                    {order.booking.place === "at_them"
+                      ? order.address
+                      : order.booking.place === "remote"
+                        ? "Remote"
+                        : "At the shop"}
+                  </p>
+                </div>
+              </div>
+              <Divider className="my-3" />
+              <div className="flex items-center gap-3">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-brand-soft text-brand-soft-text">
+                  <UserRound className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-semibold">
+                    {db.staff.find((p) => p.id === order.booking?.staffId)?.name ??
+                      "Nobody assigned"}
+                  </p>
+                  <p className="truncate text-[12px] text-text-secondary">
+                    {service?.name}
+                  </p>
+                </div>
+              </div>
+              {order.booking.deposit ? (
+                <>
+                  <Divider className="my-3" />
+                  <p className="text-[12px] leading-relaxed text-text-secondary">
+                    {order.booking.depositPaidAt
+                      ? `${money(order.booking.deposit)} deposit held, ${money(sellerReceives(order) - order.booking.deposit)} still to come.`
+                      : `${money(order.booking.deposit)} deposit was meant to hold this slot and has not been paid.`}
+                  </p>
+                </>
+              ) : null}
+              <Link
+                href={`/bookings/?id=${order.id}`}
+                className="mt-3 inline-flex items-center gap-1.5 text-[13px] font-semibold text-text-secondary hover:text-text"
+              >
+                Open in the diary
+                <ChevronRight className="size-3.5" />
+              </Link>
+            </div>
+          </div>
+        ) : (
         <div>
           <p className="mb-2 text-[12px] font-bold uppercase tracking-[0.06em] text-text-secondary">
             Delivery
@@ -376,6 +457,7 @@ function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => voi
             )}
           </div>
         </div>
+        )}
 
         {order.note && (
           <div className="rounded-2xl bg-surface-sunken p-3.5 text-[13px] leading-relaxed text-text-secondary">

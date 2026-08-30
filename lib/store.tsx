@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { createSeedDatabase, DB_VERSION } from "./seed";
-import { ingredientDraw } from "./costing";
+import { ingredientDraw, toBaseQty } from "./costing";
 import { categorise } from "./statements";
 import { riderOwed, sellerReceives, settlementOf } from "./selectors";
 import type {
@@ -23,6 +23,9 @@ import type {
   DeliverySettlement,
   Lot,
   SerialUnit,
+  Booking,
+  BookingState,
+  Service,
   Ingredient,
   RecipeLine,
   StatementImport,
@@ -129,6 +132,18 @@ export interface NewOrderInput {
   note?: string;
 }
 
+export interface NewBookingInput {
+  customerId: string;
+  serviceId: string;
+  staffId?: string;
+  startsAt: string;
+  /** Overrides the service's own duration for a quoted job. */
+  durationMinutes?: number;
+  price?: number;
+  place?: Booking["place"];
+  note?: string;
+}
+
 export interface SignUpInput {
   name: string;
   email: string;
@@ -175,6 +190,12 @@ interface StoreValue {
    * The rider is at the door and the seller has seen the money land. This is
    * the moment the goods change hands, so it is a step of its own.
    */
+  /** Books a job into the diary. It is an order, so it pays and posts like one. */
+  createBooking: (input: NewBookingInput) => Order;
+  setBookingState: (orderId: string, state: BookingState) => void;
+  /** Records the deposit that holds the slot. */
+  payDeposit: (orderId: string) => void;
+  saveService: (service: Service) => void;
   confirmDeliveryPayment: (deliveryId: string) => void;
   /** Cash the rider took on the seller's behalf, now handed over. */
   remitRiderCash: (deliveryId: string) => void;
@@ -617,6 +638,171 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const createBooking = useCallback<StoreValue["createBooking"]>(
+    (input) => {
+      const service = db.services.find((s) => s.id === input.serviceId);
+      const codeNumber =
+        Math.max(
+          12500,
+          ...(db.orders
+            .map((o) => Number(o.code.replace("#", "")))
+            .filter(Number.isFinite) as number[]),
+        ) + 1;
+      const price = input.price ?? service?.price ?? 0;
+      const deposit = service?.depositPercent
+        ? Math.round((price * service.depositPercent) / 100 / 50) * 50
+        : 0;
+
+      const order: Order = {
+        id: `ord_${codeNumber}`,
+        code: `#${codeNumber}`,
+        customerId: input.customerId,
+        items: [
+          { productId: input.serviceId, name: service?.name ?? "Service", qty: 1, price },
+        ],
+        // Nobody rides anywhere for a job done at the shop.
+        deliveryFee: 0,
+        deliverySettlement: "free",
+        discount: 0,
+        status: "confirmed",
+        paymentStatus: "unpaid",
+        channel: db.customers.find((c) => c.id === input.customerId)?.channel ?? "call",
+        address: input.place === "at_them" ? "At the customer" : "At the shop",
+        booking: {
+          serviceId: input.serviceId,
+          staffId: input.staffId,
+          startsAt: input.startsAt,
+          durationMinutes: input.durationMinutes ?? service?.durationMinutes ?? 60,
+          state: "booked",
+          place: input.place ?? "at_us",
+          deposit: deposit || undefined,
+          note: input.note,
+        },
+        note: input.note,
+        createdAt: new Date().toISOString(),
+      };
+
+      // A booking consumes no stock — it consumes a slot. Nothing is decremented.
+      setDb((prev) => ({ ...prev, orders: [order, ...prev.orders] }));
+      return order;
+    },
+    [db.orders, db.services, db.customers],
+  );
+
+  const setBookingState = useCallback<StoreValue["setBookingState"]>((orderId, state) => {
+    setDb((prev) => {
+      const order = prev.orders.find((o) => o.id === orderId);
+      if (!order?.booking) return prev;
+
+      const now = new Date().toISOString();
+      const booking: Booking = {
+        ...order.booking,
+        state,
+        startedAt: state === "in_progress" ? (order.booking.startedAt ?? now) : order.booking.startedAt,
+        finishedAt: state === "done" ? (order.booking.finishedAt ?? now) : order.booking.finishedAt,
+      };
+
+      const ledger = [...prev.ledger];
+      const posted = ledger.some((e) => e.reference === order.code && e.type === "income");
+      // A finished job is earned revenue, whether or not it has been paid for.
+      if (state === "done" && !posted) {
+        const service = prev.services.find((s) => s.id === booking.serviceId);
+        const customer = prev.customers.find((c) => c.id === order.customerId);
+        ledger.unshift({
+          id: id("led"),
+          date: now,
+          type: "income",
+          category: "Services",
+          description: `${service?.name ?? "Service"} — ${customer?.name ?? "Customer"}`,
+          amount: order.items.reduce((sum, it) => sum + it.price * it.qty, 0) - order.discount,
+          source: "order",
+          reference: order.code,
+          reconciled: order.paymentStatus === "paid",
+        });
+      }
+
+      // The job also uses up whatever it consumes, once it is actually done.
+      let ingredients = prev.ingredients;
+      if (state === "done" && !posted) {
+        const service = prev.services.find((s) => s.id === booking.serviceId);
+        if (service?.materials?.length) {
+          const drawn = new Map<string, number>();
+          service.materials.forEach((line) => {
+            drawn.set(line.ingredientId, (drawn.get(line.ingredientId) ?? 0) + toBaseQty(line));
+          });
+          ingredients = prev.ingredients.map((ing) =>
+            drawn.has(ing.id)
+              ? { ...ing, stock: Math.max(0, round3(ing.stock - (drawn.get(ing.id) ?? 0))) }
+              : ing,
+          );
+        }
+      }
+
+      return {
+        ...prev,
+        ledger,
+        ingredients,
+        orders: prev.orders.map((o) =>
+          o.id === orderId
+            ? {
+                ...o,
+                booking,
+                status:
+                  state === "done"
+                    ? "delivered"
+                    : state === "cancelled"
+                      ? "cancelled"
+                      : o.status,
+              }
+            : o,
+        ),
+      };
+    });
+  }, []);
+
+  const payDeposit = useCallback<StoreValue["payDeposit"]>((orderId) => {
+    setDb((prev) => {
+      const order = prev.orders.find((o) => o.id === orderId);
+      if (!order?.booking?.deposit || order.booking.depositPaidAt) return prev;
+      const customer = prev.customers.find((c) => c.id === order.customerId);
+      const now = new Date().toISOString();
+
+      return {
+        ...prev,
+        orders: prev.orders.map((o) =>
+          o.id === orderId && o.booking
+            ? { ...o, booking: { ...o.booking, depositPaidAt: now }, paymentStatus: "partial" }
+            : o,
+        ),
+        payments: [
+          {
+            id: id("pay"),
+            orderId,
+            customerId: order.customerId,
+            customerName: customer?.name ?? "Customer",
+            method: "mpesa" as const,
+            amount: order.booking.deposit,
+            reference: "",
+            state: "received" as const,
+            receivedAt: now,
+            matched: true,
+            source: "manual" as const,
+          },
+          ...prev.payments,
+        ],
+      };
+    });
+  }, []);
+
+  const saveService = useCallback<StoreValue["saveService"]>((service) => {
+    setDb((prev) => ({
+      ...prev,
+      services: prev.services.some((s) => s.id === service.id)
+        ? prev.services.map((s) => (s.id === service.id ? service : s))
+        : [service, ...prev.services],
+    }));
+  }, []);
+
   const confirmDeliveryPayment = useCallback<StoreValue["confirmDeliveryPayment"]>(
     (deliveryId) => {
       setDb((prev) => ({
@@ -836,6 +1022,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       updateStorefront,
       toggleStorefrontProduct,
+      createBooking,
+      setBookingState,
+      payDeposit,
+      saveService,
       confirmDeliveryPayment,
       remitRiderCash,
       setDeliverySettlement,
@@ -873,6 +1063,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       updateStorefront,
       toggleStorefrontProduct,
+      createBooking,
+      setBookingState,
+      payDeposit,
+      saveService,
       confirmDeliveryPayment,
       remitRiderCash,
       setDeliverySettlement,

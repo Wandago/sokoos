@@ -1,5 +1,6 @@
 import type { Database, LedgerEntry } from "./types";
 import { costedProducts, lowIngredients, stockValue } from "./costing";
+import { capacityOn, costedServices, unpaidDeposits } from "./services";
 import {
   ledgerTotals,
   monthOverMonth,
@@ -186,7 +187,89 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 4. Anything sold below what it costs to make.
+  // 4a. A service sold for less than the time and materials it takes.
+  const services = costedServices(db);
+  const losingService = services.find((row) => row.cost.margin < 0);
+  if (losingService) {
+    const { service, cost } = losingService;
+    found.push({
+      id: "service-underwater",
+      severity: "urgent",
+      title: `${service.name} loses money every time`,
+      figure: kes(Math.abs(cost.margin)),
+      body: `It is priced at ${kes(service.price)}. The hours cost ${kes(cost.labour)} and the materials ${kes(cost.materials)} — ${kes(cost.total)} before anything else. ${
+        cost.materials > cost.labour
+          ? "The materials alone are more than the labour, so this is a pricing problem before it is a time one."
+          : "Your own time is the part that is easy to leave out, and it is most of the gap."
+      }`,
+      workings: `${kes(service.price)} price − ${kes(cost.labour)} labour − ${kes(cost.materials)} materials.`,
+      action: { label: "Open the service", href: `/stock/?service=${service.id}` },
+    });
+  }
+
+  // 4b. The job that fills the diary is not always the job worth doing.
+  // Compare only jobs that make money; one that loses money is its own finding.
+  const earning = services.filter((row) => row.cost.profitPerHour > 0);
+  if (earning.length > 1) {
+    const worst = earning[0];
+    const best = earning[earning.length - 1];
+    if (best.cost.profitPerHour > worst.cost.profitPerHour * 2) {
+      found.push({
+        id: "profit-per-hour",
+        severity: "watch",
+        title: "An hour is not an hour",
+        figure: `${kes(best.cost.profitPerHour)}/hr`,
+        body: `${best.service.name} clears ${kes(best.cost.profitPerHour)} an hour. ${worst.service.name} clears ${kes(worst.cost.profitPerHour)}. Both fill the same diary, so an hour given to one is an hour taken from the other.`,
+        workings: `Profit after labour and materials, divided by the time each job occupies including turnaround.`,
+        action: { label: "Compare the services", href: "/stock/" },
+      });
+    }
+  }
+
+  // 4c. Hours that were on but earned nothing.
+  if (db.staff.some((person) => person.active)) {
+    const day = new Date();
+    const cap = capacityOn(db, day);
+    if (cap.available > 0 && cap.free >= 2 && cap.idleValue > 0) {
+      found.push({
+        id: "idle-capacity",
+        severity: cap.utilisation < 50 ? "watch" : "good",
+        title: `${cap.free.toFixed(1)} hours going spare today`,
+        figure: kes(cap.idleValue),
+        body: `The team is on for ${cap.available.toFixed(0)} hours and ${cap.booked.toFixed(1)} are booked — ${cap.utilisation.toFixed(0)}%. An empty hour costs the same as a busy one and cannot be sold back later.`,
+        workings: `${cap.free.toFixed(1)} free hours at the average profit per hour of what you actually sell.`,
+        action: { label: "Open the diary", href: "/bookings/" },
+      });
+    }
+    if (cap.overbooked > 0) {
+      found.push({
+        id: "overbooked",
+        severity: "urgent",
+        title: `You have promised ${cap.overbooked.toFixed(1)} hours you do not have today`,
+        figure: `${cap.booked.toFixed(1)}h booked`,
+        body: `Against ${cap.available.toFixed(0)} hours the team is actually on for. Something will run late or somebody will be turned away.`,
+        workings: `Booked hours including turnaround, against the hours worked by everyone in today.`,
+        action: { label: "Open the diary", href: "/bookings/" },
+      });
+    }
+  }
+
+  // 4d. A slot held without the deposit that was meant to hold it.
+  const owedDeposits = unpaidDeposits(db);
+  if (owedDeposits.length) {
+    const total = owedDeposits.reduce((sum, o) => sum + (o.booking?.deposit ?? 0), 0);
+    found.push({
+      id: "deposits",
+      severity: "watch",
+      title: `${owedDeposits.length} ${owedDeposits.length === 1 ? "slot is" : "slots are"} held with no deposit`,
+      figure: kes(total),
+      body: `A deposit is what stops a no-show costing you the whole slot. ${owedDeposits.map((o) => o.code).join(", ")} ${owedDeposits.length === 1 ? "has" : "have"} been booked without one.`,
+      workings: `Bookings in the diary whose service asks for a deposit and where none has been paid.`,
+      action: { label: "Open the diary", href: "/bookings/" },
+    });
+  }
+
+  // 5. Anything sold below what it costs to make.
   const bleeding = costed.filter((row) => row.cost.margin <= 0);
   if (bleeding.length) {
     const worst = bleeding[0];
@@ -218,7 +301,7 @@ export function cfoFindings(db: Database): Finding[] {
     }
   }
 
-  // 5. Production about to stop.
+  // 6. Production about to stop.
   if (short.length) {
     const blocked = costed.filter((row) => row.cost.makeable === 0);
     found.push({
@@ -239,7 +322,7 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 6. One category carrying most of the spending.
+  // 7. One category carrying most of the spending.
   const dominant = mix[0];
   if (dominant && dominant.share >= 60 && mix.length > 1) {
     found.push({
@@ -253,7 +336,7 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 7. Entries nobody has tied off.
+  // 8. Entries nobody has tied off.
   if (cover.entries > 0 && cover.percent < 95) {
     const open = cover.entries - cover.reconciled;
     found.push({
@@ -267,7 +350,7 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 8. Cash a rider is still holding.
+  // 9. Cash a rider is still holding.
   const float = riderFloat(db);
   if (float > 0) {
     const holders = riderFloatByRider(db);
@@ -283,7 +366,7 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 9. Money owed to you.
+  // 10. Money owed to you.
   const owed = db.orders
     .filter((o) => o.status !== "cancelled" && (o.paymentStatus === "unpaid" || o.paymentStatus === "partial"))
     .reduce((sum, o) => sum + sellerReceives(o), 0);
@@ -299,7 +382,7 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 10. Something genuinely going right, said only when it is true.
+  // 11. Something genuinely going right, said only when it is true.
   if (mom.revenue.delta > 8 && cash.net > 0) {
     found.push({
       id: "growing",

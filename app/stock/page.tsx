@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ChefHat,
   CircleAlert,
@@ -11,6 +12,7 @@ import {
   Plus,
   ScanBarcode,
   Scale,
+  Timer,
   TrendingDown,
 } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui/page";
@@ -37,6 +39,7 @@ import {
   totalStockValue,
 } from "@/lib/costing";
 import { costedLots } from "@/lib/lots";
+import { costedServices } from "@/lib/services";
 import { serialisedProducts } from "@/lib/serials";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -67,7 +70,7 @@ const modeMeta: Record<StockMode, { label: string; blurb: string }> = {
   lot: { label: "Lots", blurb: "Bought as a bale or carton" },
   serial: { label: "Serials", blurb: "Tracked unit by unit" },
   simple: { label: "Stock", blurb: "Counted and costed simply" },
-  service: { label: "Services", blurb: "Nothing to count" },
+  service: { label: "Services", blurb: "Sold by the hour, not off a shelf" },
 };
 
 function StockScreen() {
@@ -80,6 +83,7 @@ function StockScreen() {
   const costed = useMemo(() => costedProducts(db), [db]);
   const lots = useMemo(() => costedLots(db), [db]);
   const serials = useMemo(() => serialisedProducts(db), [db]);
+  const services = useMemo(() => costedServices(db), [db]);
   const low = lowIngredients(db.ingredients);
 
   const openProduct = db.products.find((p) => p.id === get("id"));
@@ -98,7 +102,9 @@ function StockScreen() {
             ? lots.length
             : mode === "serial"
               ? serials.length
-              : db.products.filter((p) => (p.stockMode ?? "simple") === mode).length,
+              : mode === "service"
+                ? services.length
+                : db.products.filter((p) => (p.stockMode ?? "simple") === mode).length,
     })),
     ...(db.ingredients.length
       ? [{ value: "ingredients" as const, label: "Store", count: db.ingredients.length }]
@@ -209,6 +215,66 @@ function StockScreen() {
             </button>
           ))}
         </div>
+      )}
+
+      {tab === "service" && (
+        <>
+          {/* Time, not stock, is what runs out. So the comparison that matters
+              is what an hour of each job actually clears. */}
+          <div className="mb-4 flex gap-3 rounded-2xl bg-surface-sunken p-3.5">
+            <Timer className="size-5 shrink-0 text-text-secondary" />
+            <p className="text-[12px] leading-relaxed text-text-secondary">
+              A service costs what the time costs plus whatever it uses up. Both jobs fill the same
+              diary, so the number to compare is what each clears per hour — not the price on the
+              board.
+            </p>
+          </div>
+          <div className="space-y-2.5">
+            {services.map(({ service, cost }) => (
+              <Link
+                key={service.id}
+                href={`/bookings/?new=1`}
+                className="flex w-full items-center gap-3 rounded-card border border-border-subtle bg-surface p-3.5 text-left shadow-card transition-colors hover:bg-surface-hover"
+              >
+                <span
+                  className="flex size-11 shrink-0 items-center justify-center rounded-xl text-[20px]"
+                  style={{ background: `${service.swatch}1f` }}
+                >
+                  {service.emoji}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="truncate text-[15px] font-semibold">{service.name}</p>
+                    <p className="tabular shrink-0 text-[15px] font-bold">{money(service.price)}</p>
+                  </div>
+                  <p className="mt-0.5 text-[12px] text-text-secondary">
+                    {service.durationMinutes}m
+                    {service.bufferMinutes ? ` + ${service.bufferMinutes}m turnaround` : ""} · costs{" "}
+                    {money(cost.total)} ({money(cost.labour)} time
+                    {cost.materials > 0 ? ` + ${money(cost.materials)} materials` : ""})
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Badge
+                      tone={
+                        cost.margin < 0
+                          ? "danger"
+                          : cost.marginPercent >= 45
+                            ? "success"
+                            : "pending"
+                      }
+                    >
+                      {cost.margin < 0 ? "Loses money" : `${cost.marginPercent.toFixed(0)}% margin`}
+                    </Badge>
+                    <Badge tone="neutral">{money(cost.profitPerHour)}/hr</Badge>
+                    {service.depositPercent ? (
+                      <Badge tone="neutral">{service.depositPercent}% deposit</Badge>
+                    ) : null}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
 
       {tab === "simple" && (

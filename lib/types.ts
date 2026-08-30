@@ -251,6 +251,84 @@ export interface SerialUnit {
   note?: string;
 }
 
+/* ------------------------------------------------------------------ *
+ * Services.
+ *
+ * Not every business sells a thing. A salon sells two hours of a stylist's
+ * time; a tailor sells an alteration; a photographer sells a Saturday. What is
+ * scarce is not stock on a shelf but hours in the day, and what a job costs is
+ * mostly the labour plus whatever it consumes along the way.
+ *
+ * A booking is still an order — it has a customer, a price, payments and a
+ * place in the ledger — so it is modelled as one, with the time and the person
+ * attached. That way payments, statement import and the CFO keep working
+ * without knowing anything about diaries.
+ * ------------------------------------------------------------------ */
+
+/** Fixed price, charged by the hour, or quoted job by job. */
+export type PriceMode = "fixed" | "hourly" | "quote";
+
+export interface Service {
+  id: string;
+  name: string;
+  /** How long the job takes, in minutes. The thing actually being sold. */
+  durationMinutes: number;
+  price: number;
+  priceMode: PriceMode;
+  category: string;
+  /** Turnaround and clean-up between jobs, which is real time and often unpaid. */
+  bufferMinutes?: number;
+  /** Who can do this job. Empty means anyone. */
+  staffIds?: string[];
+  /** What the job uses up — thread, dye, extensions, fuel. */
+  materials?: RecipeLine[];
+  swatch: string;
+  emoji: string;
+  active: boolean;
+  /** Usually taken up front to hold the slot. */
+  depositPercent?: number;
+}
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  phone: string;
+  role: string;
+  /** What an hour of this person's time costs the business. */
+  hourlyCost: number;
+  /** Days worked, 0 = Sunday, and the hours they are on. */
+  workingDays: number[];
+  startHour: number;
+  endHour: number;
+  active: boolean;
+}
+
+export type BookingState =
+  | "enquiry"
+  | "booked"
+  | "in_progress"
+  | "done"
+  | "no_show"
+  | "cancelled";
+
+/** Where the work happens — and, if you travel, who pays to get you there. */
+export type BookingPlace = "at_us" | "at_them" | "remote";
+
+export interface Booking {
+  serviceId: string;
+  staffId?: string;
+  startsAt: string;
+  durationMinutes: number;
+  state: BookingState;
+  place: BookingPlace;
+  /** Held to secure the slot, and set against the total when the job is done. */
+  deposit?: number;
+  depositPaidAt?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  note?: string;
+}
+
 export interface OrderItem {
   productId: string;
   name: string;
@@ -275,6 +353,11 @@ export interface Order {
   channel: Channel;
   address: string;
   riderId?: string;
+  /**
+   * Present when this order is a job rather than goods. Its presence is what
+   * makes the order a booking — there is no separate entity to keep in step.
+   */
+  booking?: Booking;
   note?: string;
   createdAt: string;
 }
@@ -502,6 +585,8 @@ export interface Database {
   conversations: Conversation[];
   captures: Capture[];
   ingredients: Ingredient[];
+  services: Service[];
+  staff: StaffMember[];
   lots: Lot[];
   serials: SerialUnit[];
   imports: StatementImport[];

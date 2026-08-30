@@ -20,6 +20,7 @@ Discovery → Conversation → Order → Payment → Delivery → Reconciliation
 | **Products** | Prices, cost, margin per item, and low-stock warnings |
 | **Payments** | M-Pesa, cash and bank payments, with suggested matches for anything unreconciled |
 | **Deliveries** | Riders, zones, what is on the road, the handover moment, and cash a rider is still holding |
+| **Diary** | For work sold by the hour: what is booked, who is doing it, how much of the day is still free, and which slots are held without a deposit |
 | **Ledger** | Money in and out, with cost of goods and rider payouts posted automatically |
 | **Smart Capture** | Point the camera at a receipt, or say the transaction out loud; credit or debit is decided from the words and the reasoning is shown |
 | **Statement import** | Paste or upload an M-Pesa or bank statement for any period; anything already in the books is recognised by transaction code and skipped |
@@ -130,7 +131,7 @@ npm run typecheck
 npm run check   # the money logic, checked without a browser — see scripts/README.md
 ```
 
-`npm run build` produces a fully static site in `out/` — 33 routes, each a real
+`npm run build` produces a fully static site in `out/` — 34 routes, each a real
 `index.html`. There is no server, no database and no serverless function
 anywhere in it.
 
@@ -241,11 +242,48 @@ once gets the right answer for each line.
 | **Lot** | Thrift bales, cartons, sacks, crates | A share of the landed cost: what you paid, plus transport, duty, sorting and mending |
 | **Serial** | Phones, electronics, anything with an IMEI | The real cost of the real unit, with its own warranty clock. Stock is counted from units, never typed |
 | **Simple** | Most resale | What you paid the supplier |
-| **Service** | Salons, repairs, consulting | Nothing bought in |
+| **Service** | Salons, tailors, repairs, photographers, consultants | The hours it takes at what that time costs, plus whatever the job uses up |
 
 Only the modes a business actually uses appear as tabs on the Stock screen. The
 business type in Settings sets sensible starting points; it never locks anything
 away.
+
+## When what you sell is your time
+
+Not every business sells a thing. A salon sells two hours of a stylist; a tailor
+sells an alteration; a photographer sells a Saturday. Three things about that are
+genuinely different, and each one needed building rather than relabelling.
+
+**What a job costs is mostly somebody's time.** A 45-minute hem with 10 minutes
+of turnaround is 55 minutes of a tailor at what that hour actually costs the
+business, plus the thread it uses. Sellers leave the labour out — it is their own
+hands, so it feels free — and then cannot work out why a full diary leaves them
+no better off. In the seeded books that is exactly what the custom dress does:
+priced at KES 7,800, it costs KES 2,860 in hours and KES 5,677 in fabric, and
+loses KES 737 every single time. The CFO says so, with the arithmetic.
+
+**The scarce thing is hours, not shelf space.** Stock keeps; an unbooked Tuesday
+does not. So the Diary leads with capacity — how many hours the team is on for,
+how many are spoken for, and what the empty ones would have earned at what the
+work usually clears. It also compares services by profit *per hour* rather than
+by price, because both jobs fill the same diary: a KES 3,000 styling hour clears
+KES 2,400 an hour and a KES 800 hem clears KES 213, and an hour given to one is
+an hour taken from the other.
+
+**A booking is still an order.** It has a customer, a price, payments and a place
+in the ledger, so it is modelled as one — with a time, a person and a deposit
+attached. That means payments, statement import, reconciliation and the CFO all
+work on bookings without knowing what a diary is. What changes is only what is
+in front of the seller: a job is confirmed, started and finished; it is never
+packed and never goes out for delivery.
+
+Deposits are modelled because they are how a Kenyan service business survives a
+no-show. A slot held without one is flagged in the diary and raised by the CFO —
+if they do not turn up, the hours are gone and there is nothing to show for them.
+
+A closed day is not an empty diary. When nobody is working the screen says so and
+offers the next open day, rather than reporting 0% utilisation as though the
+business had failed to sell something.
 
 ### Why a bale is not divided by the piece count
 
@@ -340,6 +378,12 @@ itself; change a grade's price and every piece in the bale recosts. Stock comes
 off when an order is marked delivered, so the count stays true without a
 separate stocktake.
 
+**A service is costed on the hours it takes, not just what it uses.** Labour is
+priced at what that person's time actually costs the business, turnaround time
+included, because the chair is occupied whether or not it is billed. A service
+with nobody assigned says out loud that it priced the time at a standard rate
+rather than quietly pretending to know.
+
 **A delivery fee the seller never touched is not in their books.** Neither as
 revenue nor as expense. The ledger posts a rider payout only when the seller is
 the one paying it.
@@ -381,6 +425,7 @@ lib/statements.ts    statement parsing and duplicate detection
 lib/direction.ts     credit or debit, decided from words, with its reasoning
 lib/speech.ts        a spoken sentence into an amount, a party and a direction
 lib/costing.ts       recipe costing, and one cost answer per stock mode
+lib/services.ts      service costing by the hour, capacity, slots and deposits
 lib/lots.ts          bale and carton costing, allocated by sales value
 lib/serials.ts       serialised units, stock counts and warranty clocks
 lib/cfo.ts           the CFO brief

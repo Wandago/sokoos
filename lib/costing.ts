@@ -213,7 +213,9 @@ export function activeStockModes(db: Database): StockMode[] {
   if (db.ingredients.length) modes.add("recipe");
   if (db.lots.length) modes.add("lot");
   if (db.serials.length) modes.add("serial");
-  return (["recipe", "lot", "serial", "simple", "service"] as StockMode[]).filter((mode) =>
+  // Services live in their own list, not among the products.
+  if (db.services.some((service) => service.active)) modes.add("service");
+  return (["recipe", "service", "lot", "serial", "simple"] as StockMode[]).filter((mode) =>
     modes.has(mode),
   );
 }

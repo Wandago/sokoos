@@ -39,7 +39,9 @@ import {
   todayStats,
   unmatchedPayments,
 } from "@/lib/selectors";
-import { isSameDay, money, num } from "@/lib/format";
+import { bookingsOn } from "@/lib/services";
+import { goodsTotal } from "@/lib/selectors";
+import { clockTime, isSameDay, money, num } from "@/lib/format";
 
 export default function DashboardPage() {
   return (
@@ -98,6 +100,10 @@ function Dashboard() {
   const short = lowStock(db);
   const totals = ledgerTotals(db, 30);
   const spentToday = todayExpenses(db);
+  // The next job still to happen today, if this business has a diary at all.
+  const nextUp = bookingsOn(db, new Date()).find(
+    (order) => order.booking.state === "booked" || order.booking.state === "in_progress",
+  );
 
   // A weekly target from the business's own run rate, nudged up 10%.
   const weekEarned = series.reduce((sum, d) => sum + d.revenue, 0);
@@ -299,6 +305,49 @@ function Dashboard() {
           </div>
         </div>
       </Card>
+
+      {/* A service business's next question is not "what sold" but "who is
+          coming in, and when". Only shown when there is actually a diary. */}
+      {nextUp && (
+        <>
+          <SectionTitle
+            action={
+              <Link
+                href="/bookings/"
+                className="inline-flex items-center gap-1 text-[12px] font-semibold text-text-secondary hover:text-text"
+              >
+                Diary
+                <ChevronRight className="size-3.5" />
+              </Link>
+            }
+          >
+            Next in the diary
+          </SectionTitle>
+          <Link
+            href={`/bookings/?id=${nextUp.id}`}
+            className="mb-6 flex items-center gap-3 rounded-card border border-border-subtle bg-surface p-3.5 shadow-card transition-colors hover:bg-surface-hover"
+          >
+            <div className="w-14 shrink-0 text-center">
+              <p className="tabular text-[15px] font-extrabold leading-none">
+                {clockTime(nextUp.booking!.startsAt)}
+              </p>
+              <p className="mt-1 text-[11px] text-text-muted">{nextUp.booking!.durationMinutes}m</p>
+            </div>
+            <div className="min-w-0 flex-1 border-l border-border-subtle pl-3">
+              <p className="truncate text-[15px] font-semibold">
+                {db.services.find((sv) => sv.id === nextUp.booking!.serviceId)?.name}
+              </p>
+              <p className="mt-0.5 truncate text-[12px] text-text-secondary">
+                {db.customers.find((c) => c.id === nextUp.customerId)?.name}
+                {nextUp.booking!.staffId
+                  ? ` · ${db.staff.find((p) => p.id === nextUp.booking!.staffId)?.name}`
+                  : ""}
+              </p>
+            </div>
+            <p className="tabular shrink-0 text-[15px] font-bold">{money(goodsTotal(nextUp))}</p>
+          </Link>
+        </>
+      )}
 
       {(unmatched.length > 0 || short.length > 0) && (
         <>

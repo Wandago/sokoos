@@ -1,5 +1,9 @@
 import type {
+  Booking,
+  BookingState,
   DeliverySettlement,
+  Service,
+  StaffMember,
   Lot,
   SerialUnit,
   Capture,
@@ -20,7 +24,7 @@ import type {
   RecipeLine,
 } from "./types";
 
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 /** ISO timestamp `days` ago at a given wall-clock time. */
 function isToday(iso: string) {
@@ -669,6 +673,9 @@ function buildDatabase(): Database {
     ["Cooking oil", "l", 320, 18, 5, "Bidco"],
     ["Cake box", "piece", 45, 120, 40, "Biashara Packaging"],
     ["Cake board", "piece", 30, 150, 50, "Biashara Packaging"],
+    ["Thread and notions", "kg", 3200, 1.8, 0.5, "Biashara Fabrics"],
+    ["Zips and fastenings", "piece", 90, 64, 20, "Biashara Fabrics"],
+    ["Lining and fabric", "kg", 1450, 22, 6, "Gikomba Fabrics"],
   ].map(([name, unit, costPerUnit, stock, lowStockAt, supplier], i) => ({
     id: `ing_${i + 1}`,
     name: name as string,
@@ -940,6 +947,284 @@ function buildDatabase(): Database {
           : undefined,
   }));
 
+  /* The workroom.
+   *
+   * Almost every clothes seller in Nairobi also takes in alterations, and a
+   * good number do custom pieces. It is not a sideline: it is often the better
+   * margin, because the customer is paying for skill rather than for stock. It
+   * also has nothing to do with shelves — what limits it is how many hours
+   * Mercy and Alice have between them this week. */
+  const staff: StaffMember[] = [
+    {
+      id: "stf_1",
+      name: "Mercy Auma",
+      phone: "0721 445 908",
+      role: "Head tailor",
+      // What an hour of her time costs the business, not what she is worth.
+      hourlyCost: 520,
+      workingDays: [1, 2, 3, 4, 5, 6],
+      startHour: 9,
+      endHour: 18,
+      active: true,
+    },
+    {
+      id: "stf_2",
+      name: "Alice Nyambura",
+      phone: "0733 210 774",
+      role: "Tailor and finisher",
+      hourlyCost: 380,
+      workingDays: [1, 2, 3, 4, 5],
+      startHour: 9,
+      endHour: 17,
+      active: true,
+    },
+    {
+      id: "stf_3",
+      name: "Louis Wandago",
+      phone: "0722 000 145",
+      role: "Styling and fittings",
+      hourlyCost: 600,
+      workingDays: [2, 4, 6],
+      startHour: 10,
+      endHour: 16,
+      active: true,
+    },
+  ];
+
+  const services: Service[] = [
+    {
+      id: "svc_1",
+      name: "Hem and take in",
+      durationMinutes: 45,
+      bufferMinutes: 10,
+      price: 800,
+      priceMode: "fixed",
+      category: "Alterations",
+      staffIds: ["stf_1", "stf_2"],
+      materials: [{ ingredientId: "ing_13", qty: 40, unit: "g" }],
+      swatch: "#0f766e",
+      emoji: "✂️",
+      active: true,
+    },
+    {
+      id: "svc_2",
+      name: "Zip or lining replacement",
+      durationMinutes: 60,
+      bufferMinutes: 10,
+      price: 1200,
+      priceMode: "fixed",
+      category: "Alterations",
+      staffIds: ["stf_1", "stf_2"],
+      materials: [
+        { ingredientId: "ing_13", qty: 30, unit: "g" },
+        { ingredientId: "ing_14", qty: 1, unit: "piece" },
+      ],
+      swatch: "#7c3aed",
+      emoji: "🧵",
+      active: true,
+    },
+    {
+      id: "svc_3",
+      name: "Custom dress — made to measure",
+      durationMinutes: 300,
+      bufferMinutes: 30,
+      price: 7800,
+      priceMode: "fixed",
+      category: "Bespoke",
+      staffIds: ["stf_1"],
+      materials: [
+        { ingredientId: "ing_15", qty: 3.2, unit: "kg", wastagePercent: 8 },
+        { ingredientId: "ing_13", qty: 180, unit: "g" },
+        { ingredientId: "ing_14", qty: 1, unit: "piece" },
+      ],
+      swatch: "#be123c",
+      emoji: "👗",
+      active: true,
+      depositPercent: 50,
+    },
+    {
+      id: "svc_4",
+      name: "Bridal fitting session",
+      durationMinutes: 120,
+      bufferMinutes: 20,
+      price: 4500,
+      priceMode: "fixed",
+      category: "Bespoke",
+      staffIds: ["stf_1", "stf_3"],
+      swatch: "#a16207",
+      emoji: "💍",
+      active: true,
+      depositPercent: 40,
+    },
+    {
+      id: "svc_5",
+      name: "Personal styling hour",
+      durationMinutes: 60,
+      price: 3000,
+      priceMode: "hourly",
+      category: "Styling",
+      staffIds: ["stf_3"],
+      swatch: "#1d4ed8",
+      emoji: "🪞",
+      active: true,
+    },
+    {
+      id: "svc_6",
+      name: "Wardrobe edit at your place",
+      durationMinutes: 180,
+      bufferMinutes: 45,
+      price: 9000,
+      priceMode: "quote",
+      category: "Styling",
+      staffIds: ["stf_3"],
+      swatch: "#0891b2",
+      emoji: "🏠",
+      active: true,
+      depositPercent: 30,
+    },
+  ];
+
+  /* The diary.
+   *
+   * Bookings are orders, so they carry payments and land in the ledger exactly
+   * like a dress does. What makes one a booking is that it has a time and a
+   * person attached — and an hour that goes unbooked is gone, which is the
+   * whole reason a service business needs a different screen. */
+  const bookingPlan: [number, number, number, string, string, BookingState, number | null][] = [
+    // days ago, hour, minute, serviceId, staffId, state, deposit paid (null = none due)
+    [26, 10, 0, "svc_1", "stf_2", "done", null],
+    [26, 14, 30, "svc_3", "stf_1", "done", 4250],
+    [24, 9, 30, "svc_2", "stf_1", "done", null],
+    [24, 11, 0, "svc_1", "stf_2", "done", null],
+    [23, 10, 0, "svc_5", "stf_3", "done", null],
+    [22, 9, 0, "svc_3", "stf_1", "done", 4250],
+    [21, 15, 0, "svc_4", "stf_3", "done", 1800],
+    [19, 10, 30, "svc_1", "stf_2", "done", null],
+    [19, 13, 0, "svc_2", "stf_2", "done", null],
+    [18, 9, 0, "svc_6", "stf_3", "done", 2700],
+    [17, 11, 0, "svc_1", "stf_1", "done", null],
+    [16, 10, 0, "svc_3", "stf_1", "done", 4250],
+    [15, 14, 0, "svc_5", "stf_3", "done", null],
+    [14, 9, 30, "svc_2", "stf_2", "done", null],
+    [12, 10, 0, "svc_4", "stf_1", "done", 1800],
+    [12, 15, 0, "svc_1", "stf_2", "done", null],
+    [11, 9, 0, "svc_3", "stf_1", "done", 4250],
+    [10, 11, 30, "svc_1", "stf_2", "done", null],
+    [9, 10, 0, "svc_5", "stf_3", "done", null],
+    [8, 9, 0, "svc_2", "stf_1", "done", null],
+    [8, 14, 0, "svc_1", "stf_2", "no_show", null],
+    [7, 10, 0, "svc_6", "stf_3", "done", 2700],
+    [5, 9, 30, "svc_3", "stf_1", "done", 4250],
+    [4, 11, 0, "svc_1", "stf_2", "done", null],
+    [3, 10, 0, "svc_4", "stf_3", "done", 1800],
+    [2, 9, 0, "svc_2", "stf_2", "done", null],
+    [1, 10, 30, "svc_1", "stf_1", "done", null],
+    // Today and ahead: this is what the diary screen is actually for.
+    [0, 9, 0, "svc_1", "stf_2", "done", null],
+    [0, 10, 30, "svc_3", "stf_1", "in_progress", 4250],
+    [0, 14, 0, "svc_2", "stf_2", "booked", null],
+    [0, 16, 0, "svc_5", "stf_3", "booked", null],
+    [-1, 9, 30, "svc_4", "stf_1", "booked", 1800],
+    [-1, 13, 0, "svc_1", "stf_2", "booked", null],
+    // Held without the deposit that was meant to hold it.
+    [-2, 10, 0, "svc_3", "stf_1", "booked", null],
+    [-2, 15, 0, "svc_6", "stf_3", "enquiry", null],
+    [-4, 11, 0, "svc_4", "stf_3", "booked", 1800],
+  ];
+
+  /* Nobody books a fitting on a day the tailor is not in. Snap each slot onto
+   * the nearest day that person actually works — backwards for what has
+   * already happened, forwards for what is still to come. */
+  const onWorkingDay = (days: number, hour: number, minute: number, staffId: string) => {
+    const person = staff.find((p) => p.id === staffId)!;
+    const step = days > 0 ? 1 : -1;
+    for (let shift = 0; shift < 7; shift++) {
+      const candidate = new Date();
+      candidate.setDate(candidate.getDate() - (days + shift * step));
+      candidate.setHours(hour, minute, 0, 0);
+      if (person.workingDays.includes(candidate.getDay())) return candidate.toISOString();
+    }
+    return at(days, hour, minute);
+  };
+
+  bookingPlan.forEach((row, i) => {
+    const [days, hour, minute, serviceId, staffId, state, depositPaid] = row;
+    const service = services.find((sv) => sv.id === serviceId)!;
+    const customer = customers[(i * 5 + 3) % customers.length];
+    const code = 12400 + i;
+    const orderId = `ord_${code}`;
+    const startsAt = onWorkingDay(days, hour, minute, staffId);
+    const deposit = service.depositPercent
+      ? Math.round((service.price * service.depositPercent) / 100 / 50) * 50
+      : 0;
+    const finished = state === "done";
+    // A wardrobe edit happens at the customer's place; everything else here.
+    const place = serviceId === "svc_6" ? "at_them" : "at_us";
+
+    const booking: Booking = {
+      serviceId,
+      staffId,
+      startsAt,
+      durationMinutes: service.durationMinutes,
+      state,
+      place,
+      deposit: deposit || undefined,
+      depositPaidAt: depositPaid ? at(days + 3, 12, 0) : undefined,
+      startedAt: finished || state === "in_progress" ? startsAt : undefined,
+      finishedAt: finished
+        ? new Date(+new Date(startsAt) + service.durationMinutes * 60000).toISOString()
+        : undefined,
+    };
+
+    const paymentStatus =
+      state === "done" ? "paid" : depositPaid ? "partial" : "unpaid";
+
+    orders.push({
+      id: orderId,
+      code: `#${code}`,
+      customerId: customer.id,
+      items: [{ productId: serviceId, name: service.name, qty: 1, price: service.price }],
+      deliveryFee: 0,
+      // Nobody rides anywhere for a fitting in the shop.
+      deliverySettlement: "free",
+      discount: 0,
+      status: finished ? "delivered" : state === "cancelled" ? "cancelled" : "confirmed",
+      paymentStatus,
+      channel: customer.channel,
+      address: place === "at_them" ? `${customer.location}, Nairobi` : "At the shop",
+      booking,
+      createdAt: at(days + 4, 9, 0),
+    });
+
+    if (state === "done") {
+      payments.push({
+        id: `pay_${code}`,
+        orderId,
+        customerId: customer.id,
+        customerName: customer.name,
+        method: i % 7 === 3 ? "cash" : "mpesa",
+        amount: service.price,
+        reference: i % 7 === 3 ? "" : mpesaRef(code),
+        state: "received",
+        receivedAt: booking.finishedAt ?? startsAt,
+        matched: true,
+        source: "mpesa",
+      });
+
+      ledger.unshift({
+        id: `led_svc_${code}`,
+        date: booking.finishedAt ?? startsAt,
+        type: "income",
+        category: "Services",
+        description: `${service.name} — ${customer.name}`,
+        amount: service.price,
+        source: "order",
+        reference: `#${code}`,
+        reconciled: true,
+      });
+    }
+  });
+
   // Serialised stock is derived, never typed: it is the count of units on hand.
   products.forEach((product) => {
     if (product.stockMode !== "serial") return;
@@ -952,6 +1237,8 @@ function buildDatabase(): Database {
     version: DB_VERSION,
     storefront,
     ingredients,
+    services,
+    staff,
     lots,
     serials,
     imports: [],

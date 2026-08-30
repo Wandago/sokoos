@@ -2,44 +2,111 @@
  * the same construction across the set, so a card, an ad and the landing page
  * all read as one system. Every one draws inside a 200×200 box. */
 
+/**
+ * The surface the drawing sits on. Illustrations are never boxed in a white
+ * panel — they draw straight onto the card, and their own palette flips so the
+ * whole card stays one solid colour.
+ */
+export type SpotSurface = "forest" | "lime" | "cream" | "paper";
+
+interface Palette {
+  /** Outlines and detail. */
+  ink: string;
+  /** The filled accent that carries the eye. */
+  accent: string;
+  /** Interior panels — screens, pages, wheels. */
+  paper: string;
+  /** The ground ellipse. */
+  shadow: string;
+  shadowOpacity: number;
+}
+
+const palettes: Record<SpotSurface, Palette> = {
+  // Cream line art with lime fills, cut out of the forest card behind it.
+  forest: {
+    ink: "#EFF3E2",
+    accent: "var(--lime-500)",
+    paper: "var(--forest-900)",
+    shadow: "#EFF3E2",
+    shadowOpacity: 0.14,
+  },
+  // On lime the outlines carry the weight and the fills stay light, so a
+  // drawing never becomes a black mass on a bright card.
+  lime: {
+    ink: "var(--forest-950)",
+    accent: "#ffffff",
+    paper: "#EAF6C7",
+    shadow: "var(--forest-950)",
+    shadowOpacity: 0.16,
+  },
+  cream: {
+    ink: "var(--forest-950)",
+    accent: "var(--lime-500)",
+    paper: "#ffffff",
+    shadow: "var(--forest-950)",
+    shadowOpacity: 0.1,
+  },
+  paper: {
+    ink: "var(--forest-950)",
+    accent: "var(--lime-500)",
+    paper: "#ffffff",
+    shadow: "var(--forest-950)",
+    shadowOpacity: 0.1,
+  },
+};
+
 interface SpotProps {
   className?: string;
-  /** Outline and detail colour. */
+  /** Which card colour the drawing is sitting on. Defaults to a light one. */
+  surface?: SpotSurface;
+  /** Per-part overrides, for the rare case a card needs its own mix. */
   ink?: string;
-  /** The filled accent, usually lime. */
   accent?: string;
-  /** Paper colour for panels sitting on a coloured card. */
   paper?: string;
 }
 
-const defaults = {
-  ink: "var(--forest-950)",
-  accent: "var(--lime-500)",
-  paper: "#ffffff",
-};
+function resolve({ surface = "paper", ink, accent, paper }: SpotProps): Palette {
+  const base = palettes[surface];
+  return {
+    ...base,
+    ink: ink ?? base.ink,
+    accent: accent ?? base.accent,
+    paper: paper ?? base.paper,
+  };
+}
 
 function Frame({
   className,
   children,
   label,
+  /** Nudges a composition so its ink, not its box, sits on the centre lines. */
+  offsetX = 0,
+  offsetY = 0,
 }: {
   className?: string;
   children: React.ReactNode;
   label: string;
+  offsetX?: number;
+  offsetY?: number;
 }) {
   return (
     <svg viewBox="0 0 200 200" className={className} role="img" aria-label={label}>
-      {children}
+      {offsetX || offsetY ? (
+        <g transform={`translate(${offsetX} ${offsetY})`}>{children}</g>
+      ) : (
+        children
+      )}
     </svg>
   );
 }
 
 /** A conversation turning into an order. */
-export function SpotConversation({ className, ink, accent, paper }: SpotProps) {
-  const c = { ...defaults, ink: ink ?? defaults.ink, accent: accent ?? defaults.accent, paper: paper ?? defaults.paper };
+export function SpotConversation(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
   return (
-    <Frame className={className} label="A chat message becoming an order">
-      <ellipse cx="100" cy="182" rx="58" ry="8" fill={c.ink} opacity="0.15" />
+    <Frame className={className} label="A chat message becoming an order" offsetX={-21} offsetY={4}>
+      <ellipse cx="100" cy="182" rx="58" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
       <rect x="54" y="46" width="84" height="130" rx="16" fill={c.accent} stroke={c.ink} strokeWidth="5" />
       <rect x="66" y="62" width="60" height="86" rx="8" fill={c.paper} stroke={c.ink} strokeWidth="4" />
       <rect x="74" y="72" width="30" height="9" rx="4.5" fill={c.ink} opacity="0.18" />
@@ -57,11 +124,12 @@ export function SpotConversation({ className, ink, accent, paper }: SpotProps) {
 }
 
 /** A receipt read and filed. */
-export function SpotCapture({ className, ink, accent, paper }: SpotProps) {
-  const c = { ...defaults, ink: ink ?? defaults.ink, accent: accent ?? defaults.accent, paper: paper ?? defaults.paper };
+export function SpotCapture(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
   return (
-    <Frame className={className} label="A receipt being read and filed">
-      <ellipse cx="100" cy="184" rx="56" ry="8" fill={c.ink} opacity="0.15" />
+    <Frame className={className} label="A receipt being read and filed" offsetX={-5} offsetY={-7}>
+      <ellipse cx="100" cy="184" rx="56" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
       <path
         d="M52 34 h96 v128 l-12 -9 -12 9 -12 -9 -12 9 -12 -9 -12 9 -12 -9 -12 9 z"
         fill={c.paper}
@@ -89,11 +157,12 @@ export function SpotCapture({ className, ink, accent, paper }: SpotProps) {
 }
 
 /** A rider on the way. */
-export function SpotRider({ className, ink, accent, paper }: SpotProps) {
-  const c = { ...defaults, ink: ink ?? defaults.ink, accent: accent ?? defaults.accent, paper: paper ?? defaults.paper };
+export function SpotRider(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
   return (
-    <Frame className={className} label="A rider carrying a delivery">
-      <ellipse cx="100" cy="182" rx="66" ry="8" fill={c.ink} opacity="0.15" />
+    <Frame className={className} label="A rider carrying a delivery" offsetX={10} offsetY={-26}>
+      <ellipse cx="100" cy="182" rx="66" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
       {/* Motion lines */}
       <path d="M16 92 h26 M10 112 h34 M20 132 h20" stroke={c.ink} strokeWidth="5" strokeLinecap="round" opacity="0.35" />
       {/* Box */}
@@ -119,11 +188,12 @@ export function SpotRider({ className, ink, accent, paper }: SpotProps) {
 }
 
 /** Money landing, matched. */
-export function SpotPayment({ className, ink, accent, paper }: SpotProps) {
-  const c = { ...defaults, ink: ink ?? defaults.ink, accent: accent ?? defaults.accent, paper: paper ?? defaults.paper };
+export function SpotPayment(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
   return (
-    <Frame className={className} label="A payment arriving and matching an order">
-      <ellipse cx="100" cy="184" rx="58" ry="8" fill={c.ink} opacity="0.15" />
+    <Frame className={className} label="A payment arriving and matching an order" offsetY={-7}>
+      <ellipse cx="100" cy="184" rx="58" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
       {/* Wallet */}
       <rect x="36" y="88" width="128" height="80" rx="16" fill={c.accent} stroke={c.ink} strokeWidth="5" />
       <path d="M36 112 h128" stroke={c.ink} strokeWidth="5" />
@@ -156,11 +226,12 @@ export function SpotPayment({ className, ink, accent, paper }: SpotProps) {
 }
 
 /** Books that keep themselves. */
-export function SpotLedger({ className, ink, accent, paper }: SpotProps) {
-  const c = { ...defaults, ink: ink ?? defaults.ink, accent: accent ?? defaults.accent, paper: paper ?? defaults.paper };
+export function SpotLedger(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
   return (
-    <Frame className={className} label="A ledger balancing itself">
-      <ellipse cx="100" cy="182" rx="60" ry="8" fill={c.ink} opacity="0.15" />
+    <Frame className={className} label="A ledger balancing itself" offsetY={-16}>
+      <ellipse cx="100" cy="182" rx="60" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
       <path
         d="M24 52 h64 a12 12 0 0 1 12 12 v96 a12 12 0 0 0 -12 -12 h-64 z"
         fill={c.paper}
@@ -190,11 +261,12 @@ export function SpotLedger({ className, ink, accent, paper }: SpotProps) {
 }
 
 /** The business, growing. */
-export function SpotGrowth({ className, ink, accent, paper }: SpotProps) {
-  const c = { ...defaults, ink: ink ?? defaults.ink, accent: accent ?? defaults.accent, paper: paper ?? defaults.paper };
+export function SpotGrowth(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
   return (
-    <Frame className={className} label="Business performance rising">
-      <ellipse cx="100" cy="182" rx="62" ry="8" fill={c.ink} opacity="0.15" />
+    <Frame className={className} label="Business performance rising" offsetX={12} offsetY={-7}>
+      <ellipse cx="100" cy="182" rx="62" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
       <rect x="30" y="118" width="30" height="52" rx="8" fill={c.paper} stroke={c.ink} strokeWidth="5" />
       <rect x="72" y="90" width="30" height="80" rx="8" fill={c.accent} stroke={c.ink} strokeWidth="5" />
       <rect x="114" y="62" width="30" height="108" rx="8" fill={c.paper} stroke={c.ink} strokeWidth="5" />
@@ -214,11 +286,12 @@ export function SpotGrowth({ className, ink, accent, paper }: SpotProps) {
 }
 
 /** Everything in one place. */
-export function SpotAllInOne({ className, ink, accent, paper }: SpotProps) {
-  const c = { ...defaults, ink: ink ?? defaults.ink, accent: accent ?? defaults.accent, paper: paper ?? defaults.paper };
+export function SpotAllInOne(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
   return (
-    <Frame className={className} label="Orders, payments and delivery in one place">
-      <ellipse cx="100" cy="184" rx="58" ry="8" fill={c.ink} opacity="0.15" />
+    <Frame className={className} label="Orders, payments and delivery in one place" offsetY={-7}>
+      <ellipse cx="100" cy="184" rx="58" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
       <rect x="58" y="30" width="84" height="140" rx="18" fill={c.ink} />
       <rect x="66" y="42" width="68" height="112" rx="10" fill={c.accent} />
       <rect x="74" y="54" width="52" height="22" rx="8" fill={c.paper} stroke={c.ink} strokeWidth="3" />

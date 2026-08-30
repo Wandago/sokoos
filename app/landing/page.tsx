@@ -340,9 +340,7 @@ export default function LandingPage() {
           </div>
 
           <div className="flex justify-center">
-            <div className="w-full max-w-sm rounded-[28px] bg-[#F1F3EF] p-6">
-              <SpotLedger className="mx-auto h-56 w-auto" />
-            </div>
+            <SpotLedger surface="paper" className="h-64 w-auto sm:h-72" />
           </div>
         </div>
       </section>
@@ -530,9 +528,9 @@ function FloatCard({
 }
 
 const featureTones = {
-  lime: { card: "bg-brand text-brand-ink", muted: "text-brand-ink/70", panel: "bg-white" },
-  forest: { card: "bg-forest-900 text-white", muted: "text-forest-200", panel: "bg-white" },
-  cream: { card: "bg-white text-forest-950", muted: "text-[#5B665A]", panel: "bg-[#F1F3EF]" },
+  lime: { card: "bg-brand text-brand-ink", muted: "text-brand-ink/70", surface: "lime" as const },
+  forest: { card: "bg-forest-900 text-white", muted: "text-forest-200", surface: "forest" as const },
+  cream: { card: "bg-white text-forest-950", muted: "text-[#5B665A]", surface: "paper" as const },
 };
 
 function FeatureCard({
@@ -570,12 +568,11 @@ function FeatureCard({
       </div>
       <div
         className={cn(
-          "flex aspect-[5/4] w-full shrink-0 items-center justify-center rounded-[20px] p-4",
-          wide && "sm:aspect-square sm:w-44",
-          t.panel,
+          "flex h-40 w-full shrink-0 items-center justify-center",
+          wide && "sm:h-44 sm:w-44",
         )}
       >
-        <Spot className="h-full w-auto" />
+        <Spot surface={t.surface} className="h-full w-auto" />
       </div>
     </div>
   );

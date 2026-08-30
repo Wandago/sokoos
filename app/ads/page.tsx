@@ -132,10 +132,8 @@ function StoryCard({
           {headline}
         </h2>
         {body && <p className={cn("mt-[3cqw] text-[3.8cqw] leading-snug", s.muted)}>{body}</p>}
-        <div className="flex min-h-0 flex-1 items-center justify-center py-[4cqw]">
-          <div className="flex aspect-square h-full max-h-full items-center justify-center rounded-[6cqw] bg-white p-[4cqw]">
-            <Spot className="h-full w-auto" />
-          </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center py-[5cqw]">
+          <Spot surface={surface} className="h-full w-auto" />
         </div>
         <InstallChip surface={surface} />
       </div>

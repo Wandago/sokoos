@@ -99,9 +99,13 @@ whose active tab expands into a lime label.
   what it moved against, and a signed delta pill that goes neutral when a period
   is flat and inverts its colour for measures where a rise is bad.
 - **Illustration** — flat spot drawings in `components/spot.tsx`: heavy outlines,
-  two flat fills, a ground shadow, all inside a 200×200 box. They always sit on
-  a paper panel, so their construction never changes with the card behind them.
-  The onboarding, the ad kit and the landing page draw from the same seven.
+  two flat fills, a ground shadow, all inside a 200×200 box. They draw straight
+  onto the card, never into a white panel, and carry a palette per surface
+  (`surface="forest" | "lime" | "cream" | "paper"`) so the whole card stays one
+  solid colour: cream line art on forest, dark outlines with light fills on
+  lime. Each composition is nudged so its ink, not its box, sits on the centre
+  lines. The onboarding, the ad kit and the landing page draw from the same
+  seven.
 - **Charts** — hand-rolled inline SVG/CSS. Lime is too light to carry a series
   alone on white, so columns pair lime companions with a near-black emphasis
   mark and every column keeps a visible label. Axis ticks are built from a clean

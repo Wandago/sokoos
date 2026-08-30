@@ -93,13 +93,10 @@ export default function WelcomePage() {
           <p className={cn("mt-3 text-[15px] leading-relaxed", theme.muted)}>{card.body}</p>
         </div>
 
-        {/* The illustration always sits on paper, so its construction never has
-            to change with the card behind it. The panel hugs the drawing rather
-            than stretching to fill the screen. */}
-        <div className="flex min-h-0 flex-1 items-center justify-center py-6">
-          <div className="flex aspect-[5/4] max-h-full w-full max-w-sm items-center justify-center rounded-[28px] bg-white p-5 shadow-overlay">
-            <card.Spot className="h-full w-auto" />
-          </div>
+        {/* The drawing sits straight on the card — its own palette flips per
+            surface, so the whole screen stays one solid colour. */}
+        <div className="flex min-h-0 flex-1 items-center justify-center py-4">
+          <card.Spot surface={card.theme} className="h-full max-h-[46vh] w-auto max-w-sm" />
         </div>
       </div>
 
@@ -129,7 +126,7 @@ export default function WelcomePage() {
               theme.chip,
             )}
           >
-            {last ? "Let's start" : "Next"}
+            {last ? "Let’s start" : "Next"}
             {last ? <Check className="size-4" strokeWidth={3} /> : <ArrowRight className="size-4" strokeWidth={2.6} />}
           </button>
         </div>

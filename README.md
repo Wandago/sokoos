@@ -84,9 +84,32 @@ npm run build   # static export into ./out
 npm run lint
 ```
 
-`npm run build` produces a fully static site in `out/`, so it can be hosted on
-any static host — Vercel, Netlify, Cloudflare Pages, GitHub Pages, or an S3
-bucket. There is no server and no database to run.
+`npm run build` produces a fully static site in `out/` — 22 routes, each a real
+`index.html`, about 3 MB in total. There is no server, no database and no
+serverless function anywhere in it.
+
+## Deploying it
+
+Any static host works, and none of them need a SPA fallback because every route
+is a real file.
+
+| Host | What to do |
+| --- | --- |
+| **Vercel** | Import the repo. It detects Next.js and the static export; no settings to change. |
+| **Netlify** | Import the repo. `netlify.toml` already sets the build command, publish directory and the no-cache headers for `sw.js`. |
+| **Cloudflare Pages** | Import the repo, build command `npm run build`, output directory `out`. |
+| **Anything else** | `npm run build`, then upload `out/`. |
+
+Serve `sw.js` and `manifest.webmanifest` with `Cache-Control: no-cache` — a
+stale service worker can pin an old app shell for the life of the cache.
+`netlify.toml` does this already.
+
+**Install prompts and offline need HTTPS**, which all of the above give you.
+On a bare `http://` origin the app still runs, just without the service worker.
+
+GitHub Pages is the one host that needs code changes, because it serves from
+`/<repo>/` rather than the root — that means a `basePath`, and a service worker
+scoped to the subpath. Worth avoiding unless you specifically want it.
 
 ## Installing it on a phone
 

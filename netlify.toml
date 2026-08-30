@@ -1,0 +1,21 @@
+# Static export: `npm run build` writes a complete site to ./out, so no
+# runtime, no rewrites and no serverless functions are involved. Every route
+# is a real index.html, which is why nothing here needs a SPA fallback.
+[build]
+  command = "npm run build"
+  publish = "out"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# The service worker must never be served stale, or an install can pin an old
+# app shell for the life of the cache.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"

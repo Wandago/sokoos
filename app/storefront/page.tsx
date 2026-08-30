@@ -228,7 +228,7 @@ function StorefrontEditor() {
                   type="checkbox"
                   checked={storefront.showPrices}
                   onChange={(e) => updateStorefront({ showPrices: e.target.checked })}
-                  className="size-5 accent-[--color-brand]"
+                  className="size-5 accent-brand"
                 />
               </label>
             </>

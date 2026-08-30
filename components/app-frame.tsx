@@ -25,11 +25,15 @@ function useBadges() {
 /** Screens that own the whole viewport: no header, nav or content sheet. */
 const bareRoutes = ["/welcome", "/landing", "/ads", "/login", "/signup", "/store"];
 
+/** The operator console brings its own shell for every screen beneath it. */
+const bareTrees = ["/admin"];
+
 function isBare(pathname: string) {
   // Exact match, not a prefix: /storefront is an app screen and must not be
   // caught by the /store storefront route.
   const path = pathname.replace(/\/+$/, "") || "/";
-  return bareRoutes.includes(path);
+  if (bareRoutes.includes(path)) return true;
+  return bareTrees.some((tree) => path === tree || path.startsWith(`${tree}/`));
 }
 
 function isActive(pathname: string, href: string) {

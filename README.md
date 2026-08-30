@@ -35,6 +35,44 @@ Plus three screens outside the app chrome:
 | `/login`, `/signup` | Sign in, and a three-step sign up that ends by creating the seller's mini site. |
 | `/store` | The seller's public mini site — what their customers see. |
 | `/storefront` | The editor for that site: template, palette, copy, which products appear, and a live phone preview. |
+| `/admin/*` | The operator console — see below. |
+
+## The operator console
+
+`/admin` is staff software for running the platform, not for running a shop.
+Different audience, so a different register: desktop-first, dense tables, and
+lime used to mean "this needs you" rather than as decoration.
+
+| Route | What it does |
+| --- | --- |
+| `/admin` | Platform KPIs, sign-ups per week, plan mix, GMV by region, top merchants |
+| `/admin/merchants` | Searchable, filterable table of every account, with a detail panel that can change plan or suspend |
+| `/admin/revenue` | MRR against GMV, revenue by plan, accounts past due |
+| `/admin/storefronts` | Moderation queue — uphold a report and the merchant is suspended |
+| `/admin/support` | Ticket queue, ordered by how close each is to missing its SLA |
+| `/admin/system` | Service health, incidents, and feature flags with rollout percentages |
+
+Its data lives in `lib/admin/`, deliberately apart from `lib/types.ts`: that
+file is one merchant's business, this one is the platform hosting thousands.
+Keeping them separate is what lets the console be lifted into its own
+deployment later.
+
+**Two things to know before this ships.**
+
+*The sign-in does not authenticate anyone.* It checks the shape of what you
+type and sets a flag. Anyone can read the bundle and set the same flag. Access
+has to be enforced on the server that holds the data — the UI can only ever
+hide things, never protect them. The sign-in screen says so on the screen.
+
+*The console currently ships inside the seller bundle.* That is fine for a
+demo and wrong for production: staff code should not be downloadable by every
+merchant. The routes are self-contained (own layout, own store, own frame) so
+extracting them into a separate deployment is a move, not a rewrite. The
+service worker already refuses to cache anything under `/admin`, and the
+console is marked `noindex`.
+
+All of the merchant data in it is synthetic, generated from a fixed seed. No
+figure in there describes a real business.
 
 ## Accounts, and what "sign in" means here
 

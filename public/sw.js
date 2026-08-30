@@ -5,7 +5,7 @@
  * never needs the network at all.
  */
 
-const VERSION = "sokoos-v3";
+const VERSION = "sokoos-v4";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 
@@ -81,6 +81,10 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  // The operator console is staff software. It is never precached and never
+  // served from the seller's offline cache.
+  if (url.pathname.startsWith("/admin")) return;
 
   // Navigations: serve the cached page instantly, refresh it in the
   // background, and fall back to the offline screen on a cold miss.

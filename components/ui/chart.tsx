@@ -28,8 +28,9 @@ function niceStep(rough: number) {
  * Ticks are built from a clean step, not by slicing the maximum — dividing a
  * ceiling of 20 into thirds gives 0 / 6.7 / 13.3 / 20, which nobody can read.
  */
-function axisScale(max: number, maxTicks = 4) {
-  const step = niceStep(Math.max(max, 1) / maxTicks);
+function axisScale(max: number, maxTicks = 4, integer = false) {
+  const rough = Math.max(max, 1) / maxTicks;
+  const step = integer ? Math.max(1, Math.round(niceStep(rough))) : niceStep(rough);
   const ceiling = Math.ceil(Math.max(max, 1) / step) * step;
   const ticks: number[] = [];
   for (let value = ceiling; value >= 0; value -= step) ticks.push(Number(value.toFixed(4)));
@@ -98,6 +99,8 @@ export function BarChart({
   emphasisIndex,
   hideHeadline,
   showAxis = true,
+  /** Counts, not money: keeps the axis on whole numbers. */
+  integerTicks,
   className,
 }: {
   data: Point[];
@@ -108,11 +111,12 @@ export function BarChart({
   emphasisIndex?: number;
   hideHeadline?: boolean;
   showAxis?: boolean;
+  integerTicks?: boolean;
   className?: string;
 }) {
   const [active, setActive] = useState<number | null>(null);
   const rawMax = Math.max(...data.map((d) => d.value), 1);
-  const { ceiling, ticks } = axisScale(rawMax);
+  const { ceiling, ticks } = axisScale(rawMax, 4, integerTicks);
   const emphasis = emphasisIndex ?? data.length - 1;
   const shown = active ?? emphasis;
   const shownPoint = data[shown];

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Bike,
@@ -22,7 +24,7 @@ import { CardMenu } from "@/components/ui/card-menu";
 import { OrderRow } from "@/components/order-row";
 import { BalanceCard } from "@/components/balance-card";
 import { Avatar } from "@/components/ui/avatar";
-import { EmptyState } from "@/components/ui/state";
+import { EmptyState, ListSkeleton } from "@/components/ui/state";
 import { useStore } from "@/lib/store";
 import {
   customerOf,
@@ -42,9 +44,34 @@ import { isSameDay, money, num } from "@/lib/format";
 export default function DashboardPage() {
   return (
     <Hydrated>
-      <Dashboard />
+      <FirstRunGate>
+        <Dashboard />
+      </FirstRunGate>
     </Hydrated>
   );
+}
+
+/**
+ * A first-time visitor meets the tour, not a dashboard full of someone else's
+ * numbers. Everyone after that goes straight to work.
+ */
+function FirstRunGate({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  // Safe to read storage here: <Hydrated> only mounts this after hydration.
+  const [seen] = useState(() => {
+    try {
+      return window.localStorage.getItem("sokoos.onboarded") === "1";
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    if (!seen) router.replace("/welcome");
+  }, [seen, router]);
+
+  if (!seen) return <ListSkeleton rows={4} />;
+  return <>{children}</>;
 }
 
 function greeting() {

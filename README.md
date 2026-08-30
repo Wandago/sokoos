@@ -25,6 +25,14 @@ Discovery → Conversation → Order → Payment → Delivery → Reconciliation
 | **Analytics** | Revenue trend, which channel sells, best sellers, top customers |
 | **Settings** | Business details, light/dark/system theme, demo data reset |
 
+Plus three screens outside the app chrome:
+
+| Route | What it is |
+| --- | --- |
+| `/welcome` | The onboarding flow — six swipeable cards a first-time visitor meets before the dashboard. Replayable from Settings. |
+| `/landing` | The marketing page: hero with a live-styled phone mock, how it works, features, offline, three steps, pricing. |
+| `/ads` | The ad kit — twelve 9:16 story creatives, each openable at full size to screenshot into a story slot. |
+
 ## Running it
 
 ```bash
@@ -90,6 +98,10 @@ whose active tab expands into a lime label.
 - **Metric cards** — label with an explainer, a tinted icon badge, the number,
   what it moved against, and a signed delta pill that goes neutral when a period
   is flat and inverts its colour for measures where a rise is bad.
+- **Illustration** — flat spot drawings in `components/spot.tsx`: heavy outlines,
+  two flat fills, a ground shadow, all inside a 200×200 box. They always sit on
+  a paper panel, so their construction never changes with the card behind them.
+  The onboarding, the ad kit and the landing page draw from the same seven.
 - **Charts** — hand-rolled inline SVG/CSS. Lime is too light to carry a series
   alone on white, so columns pair lime companions with a near-black emphasis
   mark and every column keeps a visible label. Axis ticks are built from a clean
@@ -110,8 +122,13 @@ Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS
 
 ```
 app/                 one route per module, all client-rendered
+app/welcome/         first-run onboarding cards
+app/landing/         marketing page
+app/ads/             ad kit
 components/ui/       the design system (button, card, badge, sheet, chart, …)
 components/          app frame, install prompt, order row, brand mark
+components/spot.tsx  flat spot illustrations
+lib/onboarding.tsx   onboarding card content and card themes
 lib/types.ts         the domain model
 lib/seed.ts          the seeded demo business
 lib/store.tsx        local-first store + domain actions

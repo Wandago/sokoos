@@ -5,13 +5,15 @@
  * never needs the network at all.
  */
 
-const VERSION = "sokoos-v1";
+const VERSION = "sokoos-v2";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 
 /* Every route in the app, so a cold install works offline immediately. */
 const SHELL_ROUTES = [
   "/",
+  "/welcome/",
+  "/landing/",
   "/orders/",
   "/inbox/",
   "/customers/",

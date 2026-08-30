@@ -22,6 +22,13 @@ function useBadges() {
   };
 }
 
+/** Screens that own the whole viewport: no header, nav or content sheet. */
+const bareRoutes = ["/welcome", "/landing", "/ads"];
+
+function isBare(pathname: string) {
+  return bareRoutes.some((route) => pathname.startsWith(route));
+}
+
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname.startsWith(href);
@@ -32,6 +39,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
   const { db } = useStore();
   const badges = useBadges();
   const [quickOpen, setQuickOpen] = useState(false);
+
+  if (isBare(pathname)) return <>{children}</>;
 
   return (
     <div className="min-h-dvh bg-bg lg:flex">

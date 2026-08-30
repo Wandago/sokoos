@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Moon, RefreshCw, Smartphone, Sun, SunMoon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Download, Moon, Play, RefreshCw, Smartphone, Sun, SunMoon } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui/page";
 import { Hydrated } from "@/components/ui/hydrated";
 import { Card, Divider } from "@/components/ui/card";
@@ -37,6 +38,7 @@ function isStandalone() {
 
 function SettingsScreen() {
   const { db, updateBusiness, resetDemoData } = useStore();
+  const router = useRouter();
   const toast = useToast();
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [resetting, setResetting] = useState(false);
@@ -187,10 +189,14 @@ function SettingsScreen() {
           This build ships with a working Nairobi fashion business so every screen has something
           real in it. Reset to start again from the seeded data.
         </p>
-        <div className="mt-4 flex gap-2.5">
+        <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
           <Button variant="secondary" full onClick={() => setResetting(true)}>
             <RefreshCw className="size-4" />
             Reset demo data
+          </Button>
+          <Button variant="secondary" full onClick={() => router.push("/welcome")}>
+            <Play className="size-4" />
+            Replay the tour
           </Button>
         </div>
       </Card>

@@ -16,6 +16,7 @@ import type {
   Product,
   Customer,
   Channel,
+  Storefront,
 } from "./types";
 
 const STORAGE_KEY = "sokoos.db.v1";
@@ -79,6 +80,25 @@ function loadDatabase(): Database {
   }
 }
 
+/** "Zawadi Collection" -> "zawadi-collection", the public address. */
+export function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+/** 0722 000 145 -> 254722000145, the shape wa.me expects. */
+export function toWhatsApp(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("254")) return digits;
+  if (digits.startsWith("0")) return `254${digits.slice(1)}`;
+  return digits;
+}
+
 function id(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -90,6 +110,15 @@ export interface NewOrderInput {
   address: string;
   channel: Channel;
   note?: string;
+}
+
+export interface SignUpInput {
+  name: string;
+  email: string;
+  phone: string;
+  businessName: string;
+  tillNumber: string;
+  location: string;
 }
 
 interface StoreValue {
@@ -119,6 +148,12 @@ interface StoreValue {
   markConversationRead: (conversationId: string) => void;
   linkConversationOrder: (conversationId: string, orderId: string) => void;
   updateBusiness: (patch: Partial<Business>) => void;
+  /** Creates the local profile and seeds a storefront from the business. */
+  signUp: (input: SignUpInput) => void;
+  signIn: (email: string) => void;
+  signOut: () => void;
+  updateStorefront: (patch: Partial<Storefront>) => void;
+  toggleStorefrontProduct: (productId: string) => void;
   resetDemoData: () => void;
 }
 
@@ -415,6 +450,77 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setDb((prev) => ({ ...prev, business: { ...prev.business, ...patch } }));
   }, []);
 
+  const signUp = useCallback<StoreValue["signUp"]>((input) => {
+    setDb((prev) => ({
+      ...prev,
+      account: {
+        name: input.name.trim(),
+        email: input.email.trim().toLowerCase(),
+        phone: input.phone.trim(),
+        createdAt: new Date().toISOString(),
+      },
+      business: {
+        ...prev.business,
+        name: input.businessName.trim(),
+        owner: input.name.trim(),
+        phone: input.phone.trim(),
+        tillNumber: input.tillNumber.trim(),
+        location: input.location.trim() || prev.business.location,
+      },
+      // The mini site exists the moment the account does — the seller only
+      // has to decide how it looks.
+      storefront: {
+        ...prev.storefront,
+        slug: slugify(input.businessName) || prev.storefront.slug,
+        headline: input.businessName.trim(),
+        whatsapp: toWhatsApp(input.phone),
+        location: input.location.trim() || prev.storefront.location,
+      },
+    }));
+  }, []);
+
+  const signIn = useCallback<StoreValue["signIn"]>((email) => {
+    setDb((prev) => ({
+      ...prev,
+      account: prev.account ?? {
+        name: prev.business.owner,
+        email: email.trim().toLowerCase(),
+        phone: prev.business.phone,
+        createdAt: new Date().toISOString(),
+      },
+    }));
+  }, []);
+
+  const signOut = useCallback(() => {
+    setDb((prev) => ({ ...prev, account: undefined }));
+  }, []);
+
+  const updateStorefront = useCallback<StoreValue["updateStorefront"]>((patch) => {
+    setDb((prev) => ({ ...prev, storefront: { ...prev.storefront, ...patch } }));
+  }, []);
+
+  const toggleStorefrontProduct = useCallback<StoreValue["toggleStorefrontProduct"]>(
+    (productId) => {
+      setDb((prev) => {
+        const hidden = prev.storefront.hiddenProductIds.includes(productId);
+        return {
+          ...prev,
+          storefront: {
+            ...prev.storefront,
+            hiddenProductIds: hidden
+              ? prev.storefront.hiddenProductIds.filter((id) => id !== productId)
+              : [...prev.storefront.hiddenProductIds, productId],
+            featuredProductId:
+              !hidden && prev.storefront.featuredProductId === productId
+                ? undefined
+                : prev.storefront.featuredProductId,
+          },
+        };
+      });
+    },
+    [],
+  );
+
   const resetDemoData = useCallback(() => {
     setDb(createSeedDatabase());
   }, []);
@@ -439,6 +545,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       markConversationRead,
       linkConversationOrder,
       updateBusiness,
+      signUp,
+      signIn,
+      signOut,
+      updateStorefront,
+      toggleStorefrontProduct,
       resetDemoData,
     }),
     [
@@ -460,6 +571,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       markConversationRead,
       linkConversationOrder,
       updateBusiness,
+      signUp,
+      signIn,
+      signOut,
+      updateStorefront,
+      toggleStorefrontProduct,
       resetDemoData,
     ],
   );

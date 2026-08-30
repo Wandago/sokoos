@@ -2,10 +2,22 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Moon, Play, RefreshCw, Smartphone, Sun, SunMoon } from "lucide-react";
+import {
+  Download,
+  LogOut,
+  Moon,
+  Play,
+  RefreshCw,
+  Smartphone,
+  Store,
+  Sun,
+  SunMoon,
+} from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui/page";
 import { Hydrated } from "@/components/ui/hydrated";
+import Link from "next/link";
 import { Card, Divider } from "@/components/ui/card";
+import { Avatar } from "@/components/ui/avatar";
 import { Field, Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { ConfirmSheet } from "@/components/ui/sheet";
@@ -37,7 +49,7 @@ function isStandalone() {
 }
 
 function SettingsScreen() {
-  const { db, updateBusiness, resetDemoData } = useStore();
+  const { db, updateBusiness, resetDemoData, signOut } = useStore();
   const router = useRouter();
   const toast = useToast();
   const [theme, setTheme] = useState<Theme>(readTheme);
@@ -76,6 +88,52 @@ function SettingsScreen() {
   return (
     <>
       <PageHeader title="Settings" subtitle="Your business details and how the app behaves." />
+
+      <SectionTitle>Account</SectionTitle>
+      <Card className="mb-5">
+        <div className="flex items-center gap-3 p-4">
+          <Avatar name={db.account?.name ?? db.business.owner} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-semibold">
+              {db.account?.name ?? db.business.owner}
+            </p>
+            <p className="truncate text-[12px] text-text-secondary">
+              {db.account?.email ?? "No account on this device"}
+            </p>
+          </div>
+          <Badge tone={db.account ? "success" : "pending"} dot>
+            {db.account ? "Signed in" : "Guest"}
+          </Badge>
+        </div>
+        <Divider />
+        <Link
+          href="/storefront"
+          className="flex items-center gap-3 p-4 transition-colors hover:bg-surface-hover"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand text-brand-ink">
+            <Store className="size-[18px]" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14px] font-semibold">Your mini site</span>
+            <span className="block truncate text-[12px] text-text-secondary">
+              sokoos.app/store/{db.storefront.slug}
+            </span>
+          </span>
+        </Link>
+        <Divider />
+        <button
+          onClick={() => {
+            signOut();
+            router.push("/login");
+          }}
+          className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-surface-hover"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-text-secondary">
+            <LogOut className="size-[18px]" />
+          </span>
+          <span className="text-[14px] font-semibold">Sign out</span>
+        </button>
+      </Card>
 
       <SectionTitle>Business</SectionTitle>
       <Card className="mb-5 p-4">

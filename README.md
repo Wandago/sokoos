@@ -32,6 +32,48 @@ Plus three screens outside the app chrome:
 | `/welcome` | The onboarding flow — six swipeable cards a first-time visitor meets before the dashboard. Replayable from Settings. |
 | `/landing` | The marketing page: hero with a live-styled phone mock, how it works, features, offline, three steps, pricing. |
 | `/ads` | The ad kit — twelve 9:16 story creatives, each openable at full size to screenshot into a story slot. |
+| `/login`, `/signup` | Sign in, and a three-step sign up that ends by creating the seller's mini site. |
+| `/store` | The seller's public mini site — what their customers see. |
+| `/storefront` | The editor for that site: template, palette, copy, which products appear, and a live phone preview. |
+
+## Accounts, and what "sign in" means here
+
+This build has no server, so an account is a **local profile**: signing up writes
+your name, email and phone to this device and nothing leaves it. The forms are
+real — validation, multi-step, the lot — and when a backend exists they post to
+it unchanged.
+
+**No password is ever stored.** Sign-up asks for one, checks its shape, and
+drops it. Keeping it in `localStorage` would put a secret on disk in the clear
+and buy nothing without a server to verify it against, so `Account` has no
+password field at all. There is a test that dumps storage and fails if a
+password ever appears in it.
+
+*Explore with the demo business* on the sign-in screen creates the demo profile
+in one tap, so the app stays instantly explorable.
+
+## The mini site
+
+Every account gets a storefront the moment it is created — the two are not
+useful apart. It pulls the same products the app already holds, so adding stock
+in **Products** puts it on the site.
+
+Four templates, each a real layout rather than a colour swap:
+
+| Template | Shape | Best for |
+| --- | --- | --- |
+| **Spotlight** | Big hero, one product blown up, grid below | Fashion and beauty |
+| **Catalogue** | Straight into a dense, price-forward grid | Volume sellers |
+| **Story** | Editorial rows that alternate, room to explain | Handmade, slow fashion |
+| **Link in bio** | One column: avatar, links, products as rows | Instagram and TikTok first |
+
+Five palettes (Lime, Forest, Cream, Ink, Clay). Each carries **two** accents —
+one for the page, one for the band — because a single accent cannot serve both:
+a dark button vanishes on a dark hero, a light one vanishes on a light page.
+
+Checkout is a WhatsApp deep link with the order already written out. That is
+deliberate: these sellers already close in the chat, and a card checkout would
+be a second system to reconcile.
 
 ## Running it
 

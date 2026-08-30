@@ -23,10 +23,13 @@ function useBadges() {
 }
 
 /** Screens that own the whole viewport: no header, nav or content sheet. */
-const bareRoutes = ["/welcome", "/landing", "/ads"];
+const bareRoutes = ["/welcome", "/landing", "/ads", "/login", "/signup", "/store"];
 
 function isBare(pathname: string) {
-  return bareRoutes.some((route) => pathname.startsWith(route));
+  // Exact match, not a prefix: /storefront is an app screen and must not be
+  // caught by the /store storefront route.
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return bareRoutes.includes(path);
 }
 
 function isActive(pathname: string, href: string) {

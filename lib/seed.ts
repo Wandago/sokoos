@@ -12,9 +12,10 @@ import type {
   Product,
   Rider,
   Channel,
+  Storefront,
 } from "./types";
 
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /** ISO timestamp `days` ago at a given wall-clock time. */
 function isToday(iso: string) {
@@ -612,8 +613,28 @@ function buildDatabase(): Database {
     },
   ];
 
+  const storefront: Storefront = {
+    slug: "zawadi-collection",
+    template: "spotlight",
+    palette: "lime",
+    headline: "Zawadi Collection",
+    tagline: "Ankara, linen and everyday pieces, made in Nairobi.",
+    about:
+      "We started on Instagram in 2023 with one wrap dress and a lot of hope. Everything is cut and finished in Nairobi, and we deliver across the city the same day.",
+    whatsapp: "254722000145",
+    instagram: "zawadi.collection",
+    tiktok: "zawadicollection",
+    location: "Nairobi, Kenya",
+    deliveryNote: "Same-day delivery in Nairobi from KES 200. Countrywide by courier.",
+    featuredProductId: "prd_1",
+    hiddenProductIds: [],
+    showPrices: true,
+    published: true,
+  };
+
   return {
     version: DB_VERSION,
+    storefront,
     business: {
       name: "Zawadi Collection",
       owner: "Louis Wandago",

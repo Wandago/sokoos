@@ -24,7 +24,9 @@ export default function WelcomePage() {
     } catch {
       // Private mode: the tour simply shows again next time.
     }
-    router.push("/");
+    // The tour ends where the product begins: making an account, which is
+    // also what creates the seller's mini site.
+    router.push("/signup");
   }, [router]);
 
   const go = useCallback(
@@ -126,7 +128,7 @@ export default function WelcomePage() {
               theme.chip,
             )}
           >
-            {last ? "Let’s start" : "Next"}
+            {last ? "Create my account" : "Next"}
             {last ? <Check className="size-4" strokeWidth={3} /> : <ArrowRight className="size-4" strokeWidth={2.6} />}
           </button>
         </div>

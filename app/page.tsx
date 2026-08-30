@@ -56,6 +56,7 @@ export default function DashboardPage() {
  * numbers. Everyone after that goes straight to work.
  */
 function FirstRunGate({ children }: { children: React.ReactNode }) {
+  const { db } = useStore();
   const router = useRouter();
   // Safe to read storage here: <Hydrated> only mounts this after hydration.
   const [seen] = useState(() => {
@@ -66,11 +67,16 @@ function FirstRunGate({ children }: { children: React.ReactNode }) {
     }
   });
 
-  useEffect(() => {
-    if (!seen) router.replace("/welcome");
-  }, [seen, router]);
+  // A first-time visitor meets the tour; someone who has seen it but has no
+  // profile on this device goes to sign in. Nobody lands on a dashboard full
+  // of a stranger's numbers.
+  const destination = !seen ? "/welcome" : !db.account ? "/login" : null;
 
-  if (!seen) return <ListSkeleton rows={4} />;
+  useEffect(() => {
+    if (destination) router.replace(destination);
+  }, [destination, router]);
+
+  if (destination) return <ListSkeleton rows={4} />;
   return <>{children}</>;
 }
 

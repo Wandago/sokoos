@@ -201,9 +201,55 @@ export interface Business {
   defaultDeliveryFee: number;
 }
 
+/**
+ * The signed-in seller.
+ *
+ * There is no password field, and there never should be one here: this build
+ * has no backend, so a password would sit in localStorage in the clear and buy
+ * nothing. The sign-up form asks for one, checks its shape, and drops it. When
+ * a real auth service exists, it verifies the password and this record holds
+ * only the profile it hands back.
+ */
+export interface Account {
+  name: string;
+  email: string;
+  phone: string;
+  createdAt: string;
+}
+
+export type StorefrontTemplate = "spotlight" | "catalogue" | "story" | "linkinbio";
+
+export type StorefrontPalette = "lime" | "forest" | "cream" | "ink" | "clay";
+
+/** The seller's public mini site — their own brand, not SokoOS's. */
+export interface Storefront {
+  /** The public address: sokoos.app/store/<slug>. */
+  slug: string;
+  template: StorefrontTemplate;
+  palette: StorefrontPalette;
+  headline: string;
+  tagline: string;
+  about: string;
+  /** Where "Order on WhatsApp" goes. Digits only, country code included. */
+  whatsapp: string;
+  instagram: string;
+  tiktok: string;
+  location: string;
+  deliveryNote: string;
+  /** Blown up at the top of the templates that have room for it. */
+  featuredProductId?: string;
+  /** Products the seller has taken off the site without deleting them. */
+  hiddenProductIds: string[];
+  showPrices: boolean;
+  published: boolean;
+}
+
 export interface Database {
   version: number;
+  /** Absent until someone signs up on this device. */
+  account?: Account;
   business: Business;
+  storefront: Storefront;
   customers: Customer[];
   products: Product[];
   orders: Order[];

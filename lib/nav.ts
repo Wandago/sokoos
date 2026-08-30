@@ -8,6 +8,7 @@ import {
   Package,
   ScanLine,
   Settings,
+  Store,
   Users,
   Wallet,
 } from "lucide-react";
@@ -32,6 +33,7 @@ export const allNav: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: MessageCircle, badge: "inbox" },
   { href: "/customers", label: "Customers", icon: Users },
   { href: "/products", label: "Products", icon: Boxes },
+  { href: "/storefront", label: "Mini site", icon: Store },
   { href: "/payments", label: "Payments", icon: Wallet, badge: "review" },
   { href: "/deliveries", label: "Deliveries", icon: Bike },
   { href: "/ledger", label: "Ledger", icon: BookOpen },

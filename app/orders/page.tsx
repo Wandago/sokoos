@@ -33,7 +33,16 @@ import { Divider } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import { useQuery } from "@/lib/use-query";
-import { customerOf, orderSubtotal, orderTotal, riderOf } from "@/lib/selectors";
+import {
+  customerOf,
+  customerPays,
+  orderSubtotal,
+  riderOf,
+  riderOwed,
+  sellerReceives,
+  settlementOf,
+} from "@/lib/selectors";
+import type { DeliverySettlement } from "@/lib/types";
 import { channelLabel, clockTime, fullDate, money } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { Channel, OrderItem, OrderStatus } from "@/lib/types";
@@ -187,7 +196,7 @@ function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => voi
   const paid = db.payments
     .filter((p) => p.orderId === order.id && p.state === "received")
     .reduce((sum, p) => sum + p.amount, 0);
-  const balance = orderTotal(order) - paid;
+  const balance = sellerReceives(order) - paid;
 
   return (
     <Sheet
@@ -283,13 +292,35 @@ function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => voi
             ))}
             <Divider />
             <div className="space-y-2 p-3.5 text-[13px]">
-              <Line label="Subtotal" value={money(orderSubtotal(order))} />
-              <Line label="Delivery" value={money(order.deliveryFee)} />
+              <Line label="Goods" value={money(orderSubtotal(order))} />
+              <Line
+                label={`Delivery — ${deliveryNote[settlementOf(order)]}`}
+                value={money(order.deliveryFee)}
+              />
               <Divider className="my-1" />
+              {/* The two numbers are different whenever the rider is paid at
+                  the door, and conflating them is how a seller ends up
+                  believing they earned money that went to somebody else. */}
               <div className="flex items-center justify-between">
-                <span className="text-[15px] font-bold">Total</span>
-                <span className="tabular text-[17px] font-extrabold">{money(orderTotal(order))}</span>
+                <span className="text-[13px] text-text-secondary">The customer pays</span>
+                <span className="tabular text-[14px] font-semibold">{money(customerPays(order))}</span>
               </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[15px] font-bold">You receive</span>
+                <span className="tabular text-[17px] font-extrabold">{money(sellerReceives(order))}</span>
+              </div>
+              {sellerReceives(order) !== customerPays(order) && (
+                <p className="rounded-xl bg-surface-sunken px-3 py-2 text-[11px] leading-relaxed text-text-muted">
+                  {money(order.deliveryFee)} goes straight to the rider, so it is not your revenue
+                  and not your expense.
+                </p>
+              )}
+              {riderOwed(order) > 0 && (
+                <p className="rounded-xl bg-surface-sunken px-3 py-2 text-[11px] leading-relaxed text-text-muted">
+                  You owe the rider {money(riderOwed(order))} for this trip. It is posted as an
+                  expense when the order is delivered.
+                </p>
+              )}
               {paid > 0 && (
                 <>
                   <Line label="Paid" value={`− ${money(paid)}`} />
@@ -397,6 +428,25 @@ function OrderDetail({ orderId, onClose }: { orderId: string; onClose: () => voi
   );
 }
 
+/** What each arrangement means, said plainly under the picker. */
+const settlementHint: Record<DeliverySettlement, string> = {
+  customer_pays_rider:
+    "The usual arrangement. They pay you for the goods and the rider for the trip, so the fee never touches your books.",
+  business_pays_rider:
+    "You collect the whole amount and settle with the rider yourself. The fee is revenue, the payout is an expense.",
+  rider_collects:
+    "The rider takes everything at the door and hands it to you later. We will track what they are still holding.",
+  free: "You absorb the trip. The rider still gets paid, and it goes down as an expense.",
+};
+
+/** How the fee is settled, in a few words on the totals line. */
+const deliveryNote: Record<DeliverySettlement, string> = {
+  customer_pays_rider: "paid to the rider",
+  business_pays_rider: "you settle it",
+  rider_collects: "rider collects",
+  free: "on you",
+};
+
 function Line({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between text-text-secondary">
@@ -418,13 +468,21 @@ function NewOrderSheet({ open, onClose }: { open: boolean; onClose: () => void }
   const [customerId, setCustomerId] = useState("");
   const [items, setItems] = useState<OrderItem[]>([]);
   const [deliveryFee, setDeliveryFee] = useState(String(db.business.defaultDeliveryFee));
+  const [settlement, setSettlement] = useState<DeliverySettlement>(
+    db.business.defaultSettlement ?? "customer_pays_rider",
+  );
   const [address, setAddress] = useState("");
   const [channel, setChannel] = useState<Channel>("whatsapp");
   const [note, setNote] = useState("");
 
   const customer = db.customers.find((c) => c.id === customerId);
   const subtotal = items.reduce((sum, it) => sum + it.price * it.qty, 0);
-  const total = subtotal + (Number(deliveryFee) || 0);
+  const fee = Number(deliveryFee) || 0;
+  // What the seller takes, which is not what the customer hands over whenever
+  // the rider is paid at the door.
+  const collectsFee = settlement === "business_pays_rider" || settlement === "rider_collects";
+  const total = subtotal + (collectsFee ? fee : 0);
+  const payable = subtotal + (settlement === "free" ? 0 : fee);
   const valid = customerId && items.length > 0 && address.trim();
 
   const reset = () => {
@@ -465,7 +523,8 @@ function NewOrderSheet({ open, onClose }: { open: boolean; onClose: () => void }
             const order = createOrder({
               customerId,
               items,
-              deliveryFee: Number(deliveryFee) || 0,
+              deliveryFee: fee,
+              deliverySettlement: settlement,
               address,
               channel,
               note: note.trim() || undefined,
@@ -596,6 +655,21 @@ function NewOrderSheet({ open, onClose }: { open: boolean; onClose: () => void }
           />
         </Field>
 
+        <Field
+          label="Who pays the rider?"
+          hint={settlementHint[settlement]}
+        >
+          <Select
+            value={settlement}
+            onChange={(e) => setSettlement(e.target.value as DeliverySettlement)}
+          >
+            <option value="customer_pays_rider">The customer, at the door</option>
+            <option value="business_pays_rider">You do, and you charge it on</option>
+            <option value="rider_collects">The rider collects everything for you</option>
+            <option value="free">Nobody — delivery is free</option>
+          </Select>
+        </Field>
+
         <Field label="Note" hint="Anything the rider or your future self should know.">
           <Textarea
             placeholder="Call before delivery, gate 4…"
@@ -612,15 +686,23 @@ function NewOrderSheet({ open, onClose }: { open: boolean; onClose: () => void }
             </div>
             <div className="mt-1.5 flex items-center justify-between text-[13px] text-text-secondary">
               <span>Delivery</span>
-              <span className="tabular font-medium text-text">
-                {money(Number(deliveryFee) || 0)}
-              </span>
+              <span className="tabular font-medium text-text">{money(fee)}</span>
             </div>
             <Divider className="my-2.5" />
-            <div className="flex items-center justify-between">
-              <span className="text-[15px] font-bold">Total</span>
+            <div className="flex items-center justify-between text-[13px] text-text-secondary">
+              <span>The customer pays</span>
+              <span className="tabular font-medium text-text">{money(payable)}</span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between">
+              <span className="text-[15px] font-bold">You receive</span>
               <span className="tabular text-[17px] font-extrabold">{money(total)}</span>
             </div>
+            {total !== payable && (
+              <p className="mt-2 text-[11px] leading-relaxed text-text-muted">
+                The {money(fee)} for the trip goes to the rider, so ask the customer for{" "}
+                {money(total)}.
+              </p>
+            )}
           </div>
         )}
 

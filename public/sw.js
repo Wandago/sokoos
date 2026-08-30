@@ -5,7 +5,7 @@
  * never needs the network at all.
  */
 
-const VERSION = "sokoos-v5";
+const VERSION = "sokoos-v6";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 
@@ -28,7 +28,7 @@ const SHELL_ROUTES = [
   "/capture/",
   "/import/",
   "/cfo/",
-  "/recipes/",
+  "/stock/",
   "/analytics/",
   "/settings/",
   "/more/",

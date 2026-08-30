@@ -32,10 +32,64 @@ export type DeliveryStatus =
   | "assigned"
   | "picked"
   | "in_transit"
+  /** The rider is with the customer, waiting for the seller to confirm payment. */
+  | "awaiting_payment"
   | "delivered"
-  | "failed";
+  | "failed"
+  | "returned";
 
 export type RiderStatus = "available" | "on_delivery" | "off";
+
+/**
+ * Who the delivery fee belongs to.
+ *
+ * The common Kenyan arrangement is that the rider is an independent boda
+ * operator with a working relationship, not an employee. The customer pays the
+ * seller for the goods and pays the rider separately for the trip. That fee is
+ * therefore neither the seller's revenue nor their expense, and counting it as
+ * either overstates the business — which is why it is modelled explicitly
+ * rather than assumed.
+ */
+export type DeliverySettlement =
+  /** Customer pays the rider directly. Never enters the seller's books. */
+  | "customer_pays_rider"
+  /** Seller charges the customer and pays the rider. Revenue and expense both. */
+  | "business_pays_rider"
+  /** Rider collects the goods money too and remits it to the seller. */
+  | "rider_collects"
+  /** Seller absorbs the trip and charges nothing. Expense only. */
+  | "free";
+
+/** How a business actually tracks what it has. */
+export type BusinessType =
+  | "fashion"
+  | "food"
+  | "electronics"
+  | "beauty"
+  | "grocery"
+  | "hardware"
+  | "services"
+  | "general";
+
+/**
+ * How a product's stock and cost are worked out.
+ *
+ * A bakery costs a cake from flour and eggs. A thrift shop buys a bale for one
+ * price and splits it across grades. A phone shop tracks each handset by its
+ * IMEI. None of these is more correct than the others — they are different
+ * trades — so the mode lives on the product rather than the app.
+ */
+export type StockMode =
+  /** A count of units with one cost price. */
+  | "simple"
+  /** Made from ingredients — cost comes from the bill of materials. */
+  | "recipe"
+  /** Bought in bulk as a bale or carton and split into sellable units. */
+  | "lot"
+  /** Each unit individually identified by serial or IMEI. */
+  | "serial"
+  /** Nothing to count. */
+  | "service";
 
 export type CaptureKind =
   | "receipt"
@@ -119,11 +173,82 @@ export interface Product {
   swatch: string;
   emoji: string;
   active: boolean;
+  /** How this product's stock and cost are worked out. Defaults to simple. */
+  stockMode?: StockMode;
   /**
    * What one unit of this product is made of. Present for anything produced
    * rather than resold, which is what lets the app cost a cake to the gram.
    */
   recipe?: RecipeLine[];
+  /** For lot-tracked goods: which lot and grade these units came out of. */
+  lotId?: string;
+  gradeId?: string;
+  /** For serialised goods: how long the unit is covered after sale. */
+  warrantyMonths?: number;
+}
+
+/* ------------------------------------------------------------------ *
+ * Lots — goods bought as one lump and split into sellable units.
+ *
+ * A thrift trader buys a bale for KES 25,000, pays transport and duty, opens
+ * it, and sorts what comes out into grades that sell for very different money.
+ * The cost of one Grade A dress is not the bale price divided by the count: it
+ * is a share of the landed cost, and the defensible way to split a joint cost
+ * across outputs of unequal value is by their relative sales value.
+ * ------------------------------------------------------------------ */
+
+export interface LotCost {
+  label: string;
+  amount: number;
+}
+
+/** Even splits the landed cost per unit; by_value splits it by sales value. */
+export type LotAllocation = "even" | "by_value";
+
+export interface LotGrade {
+  id: string;
+  label: string;
+  /** The product these units are sold as, once sorted. */
+  productId?: string;
+  units: number;
+  unitPrice: number;
+  sold: number;
+}
+
+export interface Lot {
+  id: string;
+  reference: string;
+  name: string;
+  supplier: string;
+  purchasedAt: string;
+  purchasePrice: number;
+  /** Transport, duty, clearing, sorting — everything before it can be sold. */
+  extraCosts: LotCost[];
+  allocation: LotAllocation;
+  grades: LotGrade[];
+  /** Set once the lot has been opened and counted. */
+  openedAt?: string;
+  note?: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Serialised units — goods where each individual item is identified.
+ * ------------------------------------------------------------------ */
+
+export type SerialStatus = "in_stock" | "sold" | "returned" | "faulty";
+
+export interface SerialUnit {
+  id: string;
+  productId: string;
+  /** IMEI, serial number, engine number — whatever identifies this one item. */
+  serial: string;
+  cost: number;
+  status: SerialStatus;
+  receivedAt: string;
+  soldAt?: string;
+  orderId?: string;
+  warrantyMonths?: number;
+  note?: string;
 }
 
 export interface OrderItem {
@@ -139,6 +264,11 @@ export interface Order {
   customerId: string;
   items: OrderItem[];
   deliveryFee: number;
+  /**
+   * Who the delivery fee belongs to. Absent on older records, which are read
+   * as business_pays_rider — the behaviour before this was modelled.
+   */
+  deliverySettlement?: DeliverySettlement;
   discount: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
@@ -176,6 +306,13 @@ export interface Rider {
   rating: number;
   status: RiderStatus;
   deliveriesToday: number;
+  /**
+   * Independent riders are the norm: they work with the business, not for it,
+   * and are usually paid by the customer at the door.
+   */
+  relationship?: "independent" | "in_house";
+  /** What this rider charges to each zone they cover. */
+  zoneRates?: { zone: string; fee: number }[];
 }
 
 export interface Delivery {
@@ -183,10 +320,17 @@ export interface Delivery {
   orderId: string;
   riderId: string;
   status: DeliveryStatus;
+  /** What the rider charges for this trip. */
   fee: number;
+  settlement?: DeliverySettlement;
   address: string;
   assignedAt: string;
   deliveredAt?: string;
+  /** When the seller confirmed payment so the rider could hand over. */
+  paymentConfirmedAt?: string;
+  /** Goods money the rider took on the seller's behalf and still owes them. */
+  cashCollected?: number;
+  remittedAt?: string;
 }
 
 export interface LedgerEntry {
@@ -293,6 +437,10 @@ export interface Business {
   location: string;
   currency: "KES";
   defaultDeliveryFee: number;
+  /** What trade this is, which decides how stock is tracked and what is shown. */
+  type?: BusinessType;
+  /** The arrangement this business normally has with its riders. */
+  defaultSettlement?: DeliverySettlement;
 }
 
 /**
@@ -354,5 +502,7 @@ export interface Database {
   conversations: Conversation[];
   captures: Capture[];
   ingredients: Ingredient[];
+  lots: Lot[];
+  serials: SerialUnit[];
   imports: StatementImport[];
 }

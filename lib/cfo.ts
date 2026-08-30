@@ -1,6 +1,13 @@
 import type { Database, LedgerEntry } from "./types";
 import { costedProducts, lowIngredients, stockValue } from "./costing";
-import { ledgerTotals, monthOverMonth, orderTotal, unmatchedPayments } from "./selectors";
+import {
+  ledgerTotals,
+  monthOverMonth,
+  riderFloat,
+  riderFloatByRider,
+  sellerReceives,
+  unmatchedPayments,
+} from "./selectors";
 
 /**
  * The CFO brief.
@@ -190,7 +197,7 @@ export function cfoFindings(db: Database): Finding[] {
       figure: kes(Math.abs(worst.cost.margin)),
       body: `It sells at ${kes(worst.product.price)} and costs ${kes(worst.cost.unitCost)} in ingredients alone, before delivery or your time. Every one you sell loses ${kes(Math.abs(worst.cost.margin))}.`,
       workings: `${kes(worst.product.price)} price − ${kes(worst.cost.unitCost)} ingredient cost.`,
-      action: { label: "Open the recipe", href: `/recipes/?id=${worst.product.id}` },
+      action: { label: "Open the recipe", href: `/stock/?id=${worst.product.id}` },
     });
   } else {
     const thin = costed.find((row) => row.cost.marginPercent < 25);
@@ -206,7 +213,7 @@ export function cfoFindings(db: Database): Finding[] {
             : "Look at the ingredient prices before you raise the price."
         }`,
         workings: `${kes(thin.product.price)} price − ${kes(thin.cost.unitCost)} cost = ${kes(thin.cost.margin)}.`,
-        action: { label: "Open the recipe", href: `/recipes/?id=${thin.product.id}` },
+        action: { label: "Open the recipe", href: `/stock/?id=${thin.product.id}` },
       });
     }
   }
@@ -228,7 +235,7 @@ export function cfoFindings(db: Database): Finding[] {
         ? `${blocked.map((b) => b.product.name).join(", ")} cannot be made until you restock. Every order you turn away is revenue that does not come back.`
         : `${short.map((i) => i.name).join(", ")} ${short.length === 1 ? "is" : "are"} below your reorder line. You hold ${kes(stockValue(db.ingredients))} of stock in total.`,
       workings: `${short.length} of ${db.ingredients.length} ingredients at or below their reorder point.`,
-      action: { label: "Check the store", href: "/recipes/" },
+      action: { label: "Check the store", href: "/stock/" },
     });
   }
 
@@ -260,10 +267,26 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 8. Money owed to you.
+  // 8. Cash a rider is still holding.
+  const float = riderFloat(db);
+  if (float > 0) {
+    const holders = riderFloatByRider(db);
+    const top = holders[0];
+    found.push({
+      id: "rider-float",
+      severity: float > cash.income * 0.03 ? "urgent" : "watch",
+      title: "Cash still with your riders",
+      figure: kes(float),
+      body: `${holders.length === 1 ? `${top.rider?.name ?? "A rider"} is` : `${holders.length} riders are`} holding money collected on your behalf. The orders read as paid, but the cash has not reached you${top.rider ? ` — ${top.rider.name} alone has ${kes(top.amount)} from ${top.trips} ${top.trips === 1 ? "trip" : "trips"}` : ""}.`,
+      workings: `${holders.reduce((n, h) => n + h.trips, 0)} deliveries where the rider collected and has not yet remitted.`,
+      action: { label: "See the deliveries", href: "/deliveries/" },
+    });
+  }
+
+  // 9. Money owed to you.
   const owed = db.orders
     .filter((o) => o.status !== "cancelled" && (o.paymentStatus === "unpaid" || o.paymentStatus === "partial"))
-    .reduce((sum, o) => sum + orderTotal(o), 0);
+    .reduce((sum, o) => sum + sellerReceives(o), 0);
   if (owed > 0) {
     found.push({
       id: "receivables",
@@ -276,7 +299,7 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 9. Something genuinely going right, said only when it is true.
+  // 10. Something genuinely going right, said only when it is true.
   if (mom.revenue.delta > 8 && cash.net > 0) {
     found.push({
       id: "growing",

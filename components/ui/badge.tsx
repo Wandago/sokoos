@@ -116,8 +116,10 @@ const deliveryMap: Record<DeliveryStatus, { label: string; tone: Tone }> = {
   assigned: { label: "Assigned", tone: "neutral" },
   picked: { label: "Picked up", tone: "delivery" },
   in_transit: { label: "On the way", tone: "delivery" },
+  awaiting_payment: { label: "Waiting for payment", tone: "pending" },
   delivered: { label: "Delivered", tone: "success" },
   failed: { label: "Failed", tone: "danger" },
+  returned: { label: "Returned", tone: "neutral" },
 };
 
 export function DeliveryBadge({ status }: { status: DeliveryStatus }) {

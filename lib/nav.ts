@@ -4,7 +4,7 @@ import {
   BookOpen,
   Boxes,
   Brain,
-  ChefHat,
+  Warehouse,
   FileUp,
   Home,
   MessageCircle,
@@ -43,7 +43,7 @@ export const allNav: NavItem[] = [
   { href: "/capture", label: "Smart Capture", icon: ScanLine, badge: "review" },
   { href: "/import", label: "Statement import", icon: FileUp },
   { href: "/cfo", label: "Your CFO", icon: Brain },
-  { href: "/recipes", label: "Recipes & store", icon: ChefHat },
+  { href: "/stock", label: "Stock", icon: Warehouse },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

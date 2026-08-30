@@ -16,7 +16,7 @@ import { StatTile } from "@/components/ui/chart";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import { useQuery } from "@/lib/use-query";
-import { customerOf, orderTotal, unmatchedPayments } from "@/lib/selectors";
+import { customerOf, sellerReceives, unmatchedPayments } from "@/lib/selectors";
 import { clockTime, dayLabel, isSameDay, money, relativeTime } from "@/lib/format";
 import type { Payment, PaymentMethod } from "@/lib/types";
 
@@ -231,7 +231,7 @@ function suggestions(payment: Payment, orders: ReturnType<typeof useStore>["db"]
   return orders
     .filter((o) => o.paymentStatus !== "paid" && o.status !== "cancelled")
     .map((order) => {
-      const total = orderTotal(order);
+      const total = sellerReceives(order);
       const amountMatch = 1 - Math.min(1, Math.abs(total - payment.amount) / Math.max(total, 1));
       const customerMatch = payment.customerId && payment.customerId === order.customerId ? 1 : 0;
       const hours = Math.abs(+new Date(payment.receivedAt) - +new Date(order.createdAt)) / 3600000;
@@ -417,7 +417,7 @@ function RecordPaymentSheet({ open, onClose }: { open: boolean; onClose: () => v
                 .slice(0, 60)
                 .map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.code} · {customerOf(db, o)?.name} · {money(orderTotal(o))}
+                    {o.code} · {customerOf(db, o)?.name} · {money(sellerReceives(o))}
                   </option>
                 ))}
             </Select>

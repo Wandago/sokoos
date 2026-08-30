@@ -7,7 +7,9 @@ import {
   Layers,
   Minus,
   Package,
+  PackageOpen,
   Plus,
+  ScanBarcode,
   Scale,
   TrendingDown,
 } from "lucide-react";
@@ -25,51 +27,96 @@ import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import { useQuery } from "@/lib/use-query";
 import {
+  activeStockModes,
   costProduct,
   costedProducts,
   formatLineQty,
   formatQty,
   lowIngredients,
   stockValue,
+  totalStockValue,
 } from "@/lib/costing";
+import { costedLots } from "@/lib/lots";
+import { serialisedProducts } from "@/lib/serials";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import type { Ingredient, Unit } from "@/lib/types";
+import { LotSheet } from "@/components/stock/lot-sheet";
+import { SerialSheet } from "@/components/stock/serial-sheet";
+import type { Ingredient, StockMode, Unit } from "@/lib/types";
 
-export default function RecipesPage() {
+export default function StockPage() {
   return (
     <Suspense fallback={<ListSkeleton />}>
       <Hydrated>
-        <RecipesScreen />
+        <StockScreen />
       </Hydrated>
     </Suspense>
   );
 }
 
-type Tab = "recipes" | "store";
+/**
+ * One screen, four ways of counting.
+ *
+ * A bakery, a thrift stall and a phone shop do not track stock the same way,
+ * and pretending they do is how software ends up fitting none of them. Only
+ * the modes this business actually uses appear as tabs; a seller who just
+ * counts boxes never sees a recipe tab in their life.
+ */
+const modeMeta: Record<StockMode, { label: string; blurb: string }> = {
+  recipe: { label: "Recipes", blurb: "Costed from what goes in" },
+  lot: { label: "Lots", blurb: "Bought as a bale or carton" },
+  serial: { label: "Serials", blurb: "Tracked unit by unit" },
+  simple: { label: "Stock", blurb: "Counted and costed simply" },
+  service: { label: "Services", blurb: "Nothing to count" },
+};
 
-function RecipesScreen() {
+function StockScreen() {
   const { db } = useStore();
   const { get, set } = useQuery();
-  const [tab, setTab] = useState<Tab>("recipes");
+
+  const modes = useMemo(() => activeStockModes(db), [db]);
+  const [tab, setTab] = useState<StockMode | "ingredients">(modes[0] ?? "simple");
 
   const costed = useMemo(() => costedProducts(db), [db]);
+  const lots = useMemo(() => costedLots(db), [db]);
+  const serials = useMemo(() => serialisedProducts(db), [db]);
   const low = lowIngredients(db.ingredients);
-  const open = db.products.find((p) => p.id === get("id"));
+
+  const openProduct = db.products.find((p) => p.id === get("id"));
   const openIngredient = db.ingredients.find((i) => i.id === get("ing"));
+  const openLot = db.lots.find((l) => l.id === get("lot"));
+  const openSerialProduct = db.products.find((p) => p.id === get("serial"));
+
+  const options = [
+    ...modes.map((mode) => ({
+      value: mode as StockMode | "ingredients",
+      label: modeMeta[mode].label,
+      count:
+        mode === "recipe"
+          ? costed.length
+          : mode === "lot"
+            ? lots.length
+            : mode === "serial"
+              ? serials.length
+              : db.products.filter((p) => (p.stockMode ?? "simple") === mode).length,
+    })),
+    ...(db.ingredients.length
+      ? [{ value: "ingredients" as const, label: "Store", count: db.ingredients.length }]
+      : []),
+  ];
 
   return (
     <>
       <PageHeader
-        title="Recipes & store"
-        subtitle="What each thing you make actually costs — to the gram — and what is left in the store to make it with."
+        title="Stock"
+        subtitle="What you have, what it cost, and how much is left — counted the way your trade actually counts it."
       />
 
       <div className="mb-5 grid grid-cols-2 gap-2.5">
         <StatCard
           label="Stock on hand"
           hint="At what you paid for it"
-          value={money(stockValue(db.ingredients), { compact: true })}
+          value={money(totalStockValue(db), { compact: true })}
           icon={Package}
           tint={1}
         />
@@ -82,64 +129,126 @@ function RecipesScreen() {
         />
       </div>
 
-      <Segmented
-        className="mb-5"
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "recipes", label: "Recipes", count: costed.length },
-          { value: "store", label: "Store", count: db.ingredients.length },
-        ]}
-      />
+      {options.length > 1 && (
+        <Segmented className="mb-5" value={tab} onChange={setTab} options={options} />
+      )}
 
-      {tab === "recipes" ? (
-        costed.length ? (
-          <div className="space-y-2.5">
-            {costed.map(({ product, cost }) => (
+      {tab === "recipe" && (
+        <RecipeList costed={costed} onOpen={(id) => set("id", id)} />
+      )}
+
+      {tab === "lot" && (
+        <div className="space-y-2.5">
+          {lots.map((costedLot) => {
+            const { lot } = costedLot;
+            return (
               <button
-                key={product.id}
-                onClick={() => set("id", product.id)}
+                key={lot.id}
+                onClick={() => set("lot", lot.id)}
                 className="flex w-full items-center gap-3 rounded-card border border-border-subtle bg-surface p-3.5 text-left shadow-card transition-colors hover:bg-surface-hover"
               >
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-soft-text">
-                  <ChefHat className="size-5" strokeWidth={2} />
+                  <PackageOpen className="size-5" strokeWidth={2} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-2">
-                    <p className="truncate text-[15px] font-semibold">{product.name}</p>
-                    <p className="tabular shrink-0 text-[15px] font-bold">{money(product.price)}</p>
+                    <p className="truncate text-[15px] font-semibold">{lot.reference}</p>
+                    <p className="tabular shrink-0 text-[15px] font-bold">
+                      {money(costedLot.landedCost)}
+                    </p>
                   </div>
-                  <p className="mt-0.5 text-[12px] text-text-secondary">
-                    Costs {money(cost.unitCost)} · {product.recipe?.length} ingredients
+                  <p className="mt-0.5 truncate text-[12px] text-text-secondary">
+                    {lot.name} · {costedLot.units} pieces
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Badge
-                      tone={
-                        cost.marginPercent >= 45
-                          ? "success"
-                          : cost.marginPercent >= 25
-                            ? "pending"
-                            : "danger"
-                      }
-                    >
-                      {cost.marginPercent.toFixed(0)}% margin
+                    <Badge tone={costedLot.paidBack ? "success" : "pending"}>
+                      {costedLot.paidBack
+                        ? "Paid back"
+                        : `${costedLot.unitsToBreakEven} more to break even`}
                     </Badge>
-                    <Badge tone={cost.makeable > 0 ? "neutral" : "danger"}>
-                      {cost.makeable > 0 ? `${cost.makeable} makeable` : "Cannot make"}
+                    <Badge tone="neutral">
+                      {costedLot.grades.reduce((s, g) => s + g.remaining, 0)} left
                     </Badge>
                   </div>
                 </div>
               </button>
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon={<ChefHat className="size-6" />}
-            title="No recipes yet"
-            body="Give a product a recipe and its cost, margin and stock cover are worked out for you."
-          />
-        )
-      ) : (
+            );
+          })}
+        </div>
+      )}
+
+      {tab === "serial" && (
+        <div className="space-y-2.5">
+          {serials.map(({ product, summary }) => (
+            <button
+              key={product.id}
+              onClick={() => set("serial", product.id)}
+              className="flex w-full items-center gap-3 rounded-card border border-border-subtle bg-surface p-3.5 text-left shadow-card transition-colors hover:bg-surface-hover"
+            >
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-surface-sunken text-text-secondary">
+                <ScanBarcode className="size-5" strokeWidth={2} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="truncate text-[15px] font-semibold">{product.name}</p>
+                  <p className="tabular shrink-0 text-[15px] font-bold">{money(product.price)}</p>
+                </div>
+                <p className="mt-0.5 text-[12px] text-text-secondary">
+                  {summary.inStock.length} on the shelf · {summary.sold.length} sold ·{" "}
+                  {money(summary.stockValue)} tied up
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge tone={summary.inStock.length ? "neutral" : "danger"}>
+                    {summary.inStock.length ? `${summary.inStock.length} in stock` : "Out of stock"}
+                  </Badge>
+                  {summary.faulty.length > 0 && (
+                    <Badge tone="danger">{summary.faulty.length} faulty</Badge>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === "simple" && (
+        <div className="space-y-2.5">
+          {db.products
+            .filter((p) => (p.stockMode ?? (p.recipe?.length ? "recipe" : "simple")) === "simple")
+            .map((product) => {
+              const margin = product.price > 0 ? ((product.price - product.cost) / product.price) * 100 : 0;
+              return (
+                <div
+                  key={product.id}
+                  className="flex items-center gap-3 rounded-card border border-border-subtle bg-surface p-3.5"
+                >
+                  <span
+                    className="flex size-11 shrink-0 items-center justify-center rounded-xl text-[20px]"
+                    style={{ background: `${product.swatch}1f` }}
+                  >
+                    {product.emoji}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="truncate text-[15px] font-semibold">{product.name}</p>
+                      <p className="tabular shrink-0 text-[15px] font-bold">{money(product.price)}</p>
+                    </div>
+                    <p className="mt-0.5 text-[12px] text-text-secondary">
+                      Cost {money(product.cost)} · {margin.toFixed(0)}% margin
+                    </p>
+                    <div className="mt-2">
+                      <Badge tone={product.stock <= product.lowStockAt ? "pending" : "neutral"}>
+                        {product.stock} in stock
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      )}
+
+      {tab === "ingredients" && (
         <>
           {low.length > 0 && (
             <>
@@ -165,24 +274,84 @@ function RecipesScreen() {
               />
             ))}
           </div>
+          <p className="mt-4 px-1 text-[12px] leading-relaxed text-text-muted">
+            Ingredients are worth {money(stockValue(db.ingredients))}. Stock comes off when an
+            order is marked delivered, so this stays true without a separate count.
+          </p>
         </>
       )}
 
-      {open && <RecipeSheet productId={open.id} onClose={() => set("id", null)} />}
+      {openProduct && <RecipeSheet productId={openProduct.id} onClose={() => set("id", null)} />}
       {openIngredient && (
         <IngredientSheet ingredient={openIngredient} onClose={() => set("ing", null)} />
+      )}
+      {openLot && <LotSheet lotId={openLot.id} onClose={() => set("lot", null)} />}
+      {openSerialProduct && (
+        <SerialSheet productId={openSerialProduct.id} onClose={() => set("serial", null)} />
       )}
     </>
   );
 }
 
-function IngredientRow({
-  ingredient,
+function RecipeList({
+  costed,
   onOpen,
 }: {
-  ingredient: Ingredient;
-  onOpen: () => void;
+  costed: ReturnType<typeof costedProducts>;
+  onOpen: (id: string) => void;
 }) {
+  if (!costed.length) {
+    return (
+      <EmptyState
+        icon={<ChefHat className="size-6" />}
+        title="No recipes yet"
+        body="Give a product a recipe and its cost, margin and stock cover are worked out for you."
+      />
+    );
+  }
+  return (
+    <div className="space-y-2.5">
+      {costed.map(({ product, cost }) => (
+        <button
+          key={product.id}
+          onClick={() => onOpen(product.id)}
+          className="flex w-full items-center gap-3 rounded-card border border-border-subtle bg-surface p-3.5 text-left shadow-card transition-colors hover:bg-surface-hover"
+        >
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-soft-text">
+            <ChefHat className="size-5" strokeWidth={2} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="truncate text-[15px] font-semibold">{product.name}</p>
+              <p className="tabular shrink-0 text-[15px] font-bold">{money(product.price)}</p>
+            </div>
+            <p className="mt-0.5 text-[12px] text-text-secondary">
+              Costs {money(cost.unitCost)} · {product.recipe?.length} ingredients
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge
+                tone={
+                  cost.marginPercent >= 45
+                    ? "success"
+                    : cost.marginPercent >= 25
+                      ? "pending"
+                      : "danger"
+                }
+              >
+                {cost.marginPercent.toFixed(0)}% margin
+              </Badge>
+              <Badge tone={cost.makeable > 0 ? "neutral" : "danger"}>
+                {cost.makeable > 0 ? `${cost.makeable} makeable` : "Cannot make"}
+              </Badge>
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function IngredientRow({ ingredient, onOpen }: { ingredient: Ingredient; onOpen: () => void }) {
   const low = ingredient.stock <= ingredient.lowStockAt;
   // How full the bin is, capped so a big restock does not overflow the bar.
   const fill = Math.min(100, (ingredient.stock / Math.max(ingredient.lowStockAt * 3, 1)) * 100);
@@ -342,7 +511,7 @@ function RecipeSheet({ productId, onClose }: { productId: string; onClose: () =>
   );
 }
 
-function Figure({
+export function Figure({
   label,
   value,
   tone,
@@ -370,13 +539,7 @@ function Figure({
 
 const units: Unit[] = ["kg", "g", "l", "ml", "piece"];
 
-function IngredientSheet({
-  ingredient,
-  onClose,
-}: {
-  ingredient: Ingredient;
-  onClose: () => void;
-}) {
+function IngredientSheet({ ingredient, onClose }: { ingredient: Ingredient; onClose: () => void }) {
   const { adjustIngredientStock, saveIngredient } = useStore();
   const toast = useToast();
   const [amount, setAmount] = useState("");

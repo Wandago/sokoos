@@ -1,4 +1,7 @@
 import type {
+  DeliverySettlement,
+  Lot,
+  SerialUnit,
   Capture,
   Conversation,
   Customer,
@@ -17,7 +20,7 @@ import type {
   RecipeLine,
 } from "./types";
 
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /** ISO timestamp `days` ago at a given wall-clock time. */
 function isToday(iso: string) {
@@ -211,6 +214,12 @@ function buildDatabase(): Database {
       rating,
       status: i === 2 ? "available" : "on_delivery",
       deliveriesToday,
+      // Boda riders in town work with the business, not for it.
+      relationship: i === 3 ? "in_house" : "independent",
+      zoneRates: zones.map((zone) => ({
+        zone,
+        fee: zone === "Karen" || zone === "Ruaka" || zone === "Runda" ? 350 : 200,
+      })),
     }),
   );
 
@@ -240,19 +249,34 @@ function buildDatabase(): Database {
       const p = products[productIdx];
       return { productId: p.id, name: p.name, qty, price: p.price };
     });
+    /* How this trip is settled. Most of the time the customer pays the boda
+     * directly at the door and the seller never touches that money; sometimes
+     * the seller charges it and settles with the rider; occasionally the rider
+     * collects the goods money too and remits it later. */
+    const settlement: DeliverySettlement =
+      riderIdx === null
+        ? "free"
+        : i % 10 === 3 || i % 10 === 7
+          ? "business_pays_rider"
+          : i % 17 === 5
+            ? "rider_collects"
+            : "customer_pays_rider";
+
     if (status !== "cancelled") {
       const cogs = items.reduce(
         (sum, [productIdx, qty]) => sum + productRows[productIdx][3] * qty,
         0,
       );
       cogsByDay.set(days, (cogsByDay.get(days) ?? 0) + cogs);
-      if (riderIdx !== null) {
-        // Riders keep most of the delivery fee.
-        riderFeesByDay.set(days, (riderFeesByDay.get(days) ?? 0) + Math.round(deliveryFee * 0.75));
+      // Only a fee the seller is actually paying is an expense of the business.
+      if (riderIdx !== null && settlement === "business_pays_rider") {
+        riderFeesByDay.set(days, (riderFeesByDay.get(days) ?? 0) + deliveryFee);
       }
     }
     const subtotal = orderItems.reduce((sum, it) => sum + it.price * it.qty, 0);
-    const total = subtotal + deliveryFee;
+    const collectsFee = settlement === "business_pays_rider" || settlement === "rider_collects";
+    // What lands in the seller's account, which is what a payment record is for.
+    const total = subtotal + (collectsFee ? deliveryFee : 0);
 
     orders.push({
       id: orderId,
@@ -260,6 +284,7 @@ function buildDatabase(): Database {
       customerId: customer.id,
       items: orderItems,
       deliveryFee,
+      deliverySettlement: settlement,
       discount: 0,
       status,
       paymentStatus,
@@ -290,15 +315,30 @@ function buildDatabase(): Database {
     // Delivery record
     if (riderIdx !== null) {
       const delivered = status === "delivered";
+      // A rider who collected on the seller's behalf owes that money until they
+      // remit it. The most recent few have not settled up yet, which is exactly
+      // the float a seller loses track of.
+      const collecting = settlement === "rider_collects" && delivered;
+      const remitted = collecting && days > 2;
       deliveries.push({
         id: `dlv_${code}`,
         orderId,
         riderId: riders[riderIdx].id,
-        status: delivered ? "delivered" : status === "out_for_delivery" ? "in_transit" : "assigned",
+        status: delivered
+          ? "delivered"
+          : status === "out_for_delivery"
+            ? i % 6 === 1
+              ? "awaiting_payment"
+              : "in_transit"
+            : "assigned",
         fee: deliveryFee,
+        settlement,
         address: `${customer.location}, Nairobi`,
         assignedAt: at(days, hour, ((i * 7) % 60) + 10),
         deliveredAt: delivered ? at(days, hour + 2, (i * 7) % 60) : undefined,
+        paymentConfirmedAt: delivered ? at(days, hour + 2, ((i * 7) % 60) - 4) : undefined,
+        cashCollected: collecting ? subtotal + deliveryFee : undefined,
+        remittedAt: remitted ? at(days - 1, 9, 15) : undefined,
       });
     }
 
@@ -708,6 +748,7 @@ function buildDatabase(): Database {
       swatch: "#d97706",
       emoji: "🎂",
       active: true,
+      stockMode: "recipe",
       recipe: recipes.prd_13,
     },
     {
@@ -722,6 +763,7 @@ function buildDatabase(): Database {
       swatch: "#7c2d12",
       emoji: "🍫",
       active: true,
+      stockMode: "recipe",
       recipe: recipes.prd_14,
     },
     {
@@ -736,14 +778,182 @@ function buildDatabase(): Database {
       swatch: "#b45309",
       emoji: "🥯",
       active: true,
+      stockMode: "recipe",
       recipe: recipes.prd_15,
     },
   );
+
+  /* Goods bought as a lot.
+   *
+   * A thrift trader buys a bale for one price, pays to get it here, opens it,
+   * and finds three grades inside that sell for very different money. Splitting
+   * the landed cost evenly across the pieces would say a Grade C top cost the
+   * same as a Grade A dress, which is not true of anything except the scale. So
+   * the cost is allocated by relative sales value, the way joint costs are. */
+  const lots: Lot[] = [
+    {
+      id: "lot_1",
+      reference: "BALE-014",
+      name: "Mixed ladies' dresses — 45 kg bale",
+      supplier: "Gikomba Bale Traders",
+      purchasedAt: at(23, 8, 30),
+      purchasePrice: 38000,
+      extraCosts: [
+        { label: "Transport from Gikomba", amount: 1800 },
+        { label: "Sorting and pressing", amount: 2200 },
+        { label: "Mending", amount: 900 },
+      ],
+      allocation: "by_value",
+      openedAt: at(22, 10, 0),
+      grades: [
+        { id: "grd_1a", label: "Grade A — shop floor", productId: "prd_16", units: 28, unitPrice: 2200, sold: 19 },
+        { id: "grd_1b", label: "Grade B — needs pressing", productId: "prd_17", units: 41, unitPrice: 1100, sold: 30 },
+        { id: "grd_1c", label: "Grade C — sold by weight", productId: "prd_18", units: 36, unitPrice: 400, sold: 31 },
+      ],
+      note: "Fourteenth bale from this supplier. Grade A share is holding up.",
+    },
+    {
+      id: "lot_2",
+      reference: "CTN-007",
+      name: "Shea butter 250ml — carton of 48",
+      supplier: "Nakuru Naturals",
+      purchasedAt: at(9, 11, 15),
+      purchasePrice: 21600,
+      extraCosts: [{ label: "Courier", amount: 1200 }],
+      // One product, one price: an even split is the honest answer here.
+      allocation: "even",
+      openedAt: at(9, 16, 0),
+      grades: [{ id: "grd_2a", label: "Shea Butter Cream 250ml", productId: "prd_5", units: 48, unitPrice: 1200, sold: 14 }],
+    },
+  ];
+
+  products.push(
+    {
+      id: "prd_16",
+      name: "Bale Grade A Dress",
+      sku: "ZC-BL-16",
+      price: 2200,
+      cost: 0,
+      stock: 9,
+      lowStockAt: 4,
+      category: "Thrift",
+      swatch: "#9d174d",
+      emoji: "👚",
+      active: true,
+      stockMode: "lot",
+      lotId: "lot_1",
+      gradeId: "grd_1a",
+    },
+    {
+      id: "prd_17",
+      name: "Bale Grade B Dress",
+      sku: "ZC-BL-17",
+      price: 1100,
+      cost: 0,
+      stock: 11,
+      lowStockAt: 5,
+      category: "Thrift",
+      swatch: "#7e22ce",
+      emoji: "👕",
+      active: true,
+      stockMode: "lot",
+      lotId: "lot_1",
+      gradeId: "grd_1b",
+    },
+    {
+      id: "prd_18",
+      name: "Bale Grade C Bundle",
+      sku: "ZC-BL-18",
+      price: 400,
+      cost: 0,
+      stock: 5,
+      lowStockAt: 5,
+      category: "Thrift",
+      swatch: "#0e7490",
+      emoji: "🧺",
+      active: true,
+      stockMode: "lot",
+      lotId: "lot_1",
+      gradeId: "grd_1c",
+    },
+    /* Electronics, where the unit is the thing that matters: a phone shop does
+     * not have "four power banks", it has four specific power banks, each with
+     * its own IMEI or serial and its own warranty clock. */
+    {
+      id: "prd_19",
+      name: "20,000 mAh Power Bank",
+      sku: "ZC-EL-19",
+      price: 3400,
+      cost: 2050,
+      stock: 0,
+      lowStockAt: 2,
+      category: "Electronics",
+      swatch: "#1e293b",
+      emoji: "🔋",
+      active: true,
+      stockMode: "serial",
+      warrantyMonths: 6,
+    },
+    {
+      id: "prd_20",
+      name: "Wireless Earbuds Pro",
+      sku: "ZC-EL-20",
+      price: 4800,
+      cost: 2900,
+      stock: 0,
+      lowStockAt: 2,
+      category: "Electronics",
+      swatch: "#334155",
+      emoji: "🎧",
+      active: true,
+      stockMode: "serial",
+      warrantyMonths: 12,
+    },
+  );
+
+  // Each unit, individually. Stock is the count of these, never a typed number.
+  const serials: SerialUnit[] = [
+    ["prd_19", "PB20K-4471028", 2050, "in_stock", 12],
+    ["prd_19", "PB20K-4471035", 2050, "in_stock", 12],
+    ["prd_19", "PB20K-4471042", 2050, "sold", 26],
+    ["prd_19", "PB20K-4471059", 2100, "sold", 18],
+    ["prd_19", "PB20K-4471066", 2100, "faulty", 20],
+    ["prd_20", "EBP-88213004", 2900, "in_stock", 8],
+    ["prd_20", "EBP-88213011", 2900, "in_stock", 8],
+    ["prd_20", "EBP-88213028", 2900, "sold", 15],
+    ["prd_20", "EBP-88213035", 2950, "sold", 31],
+    ["prd_20", "EBP-88213042", 2950, "returned", 24],
+  ].map(([productId, serial, cost, status, days], i) => ({
+    id: `srl_${i + 1}`,
+    productId: productId as string,
+    serial: serial as string,
+    cost: cost as number,
+    status: status as SerialUnit["status"],
+    receivedAt: at(days as number, 10, 0),
+    soldAt: status === "sold" ? at((days as number) - 6, 14, 30) : undefined,
+    warrantyMonths: productId === "prd_19" ? 6 : 12,
+    note:
+      status === "faulty"
+        ? "Will not hold charge past 40%. Held for the supplier."
+        : status === "returned"
+          ? "Customer returned it within the week. Resealed and back on the shelf."
+          : undefined,
+  }));
+
+  // Serialised stock is derived, never typed: it is the count of units on hand.
+  products.forEach((product) => {
+    if (product.stockMode !== "serial") return;
+    product.stock = serials.filter(
+      (unit) => unit.productId === product.id && unit.status === "in_stock",
+    ).length;
+  });
 
   return {
     version: DB_VERSION,
     storefront,
     ingredients,
+    lots,
+    serials,
     imports: [],
     business: {
       name: "Zawadi Collection",
@@ -753,6 +963,9 @@ function buildDatabase(): Database {
       location: "Nairobi, Kenya",
       currency: "KES",
       defaultDeliveryFee: 200,
+      type: "fashion",
+      // The usual arrangement: the boda is paid by the customer at the door.
+      defaultSettlement: "customer_pays_rider",
     },
     customers,
     products,

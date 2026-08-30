@@ -1,5 +1,7 @@
-import type { Database, Ingredient, Product, RecipeLine, Unit } from "./types";
+import type { Database, Ingredient, Product, RecipeLine, StockMode, Unit } from "./types";
 import { unitFactor } from "./types";
+import { lotStockValue, lotUnitCost } from "./lots";
+import { serialStockValue, summariseSerials, unitsOf } from "./serials";
 
 /**
  * Recipe costing.
@@ -119,4 +121,110 @@ export function formatQty(qty: number, unit: Unit) {
 export function formatLineQty(line: RecipeLine) {
   const label = formatQty(line.qty, line.unit);
   return line.wastagePercent ? `${label} +${line.wastagePercent}% waste` : label;
+}
+
+
+/* ------------------------------------------------------------------ *
+ * One question, four ways of answering it.
+ *
+ * "What did this cost me?" has a different answer in every trade: a bakery
+ * works it out from flour and eggs, a thrift shop from a share of what the
+ * bale cost, a phone shop from the price of that exact handset, and everyone
+ * else from what they paid the supplier. The mode lives on the product, so a
+ * shop that does two of these at once — and plenty do — gets the right answer
+ * for each line rather than one average that is wrong for both.
+ * ------------------------------------------------------------------ */
+
+export function stockModeOf(product: Product): StockMode {
+  if (product.stockMode) return product.stockMode;
+  // Older records: a recipe means it is produced, anything else is plain stock.
+  return product.recipe?.length ? "recipe" : "simple";
+}
+
+export interface UnitCost {
+  mode: StockMode;
+  /** Null when the mode cannot produce a cost yet — an unsorted lot, no units. */
+  cost: number | null;
+  /** Where the number came from, in words the seller can check. */
+  basis: string;
+  margin: number | null;
+  marginPercent: number | null;
+}
+
+export function unitCost(product: Product, db: Database): UnitCost {
+  const mode = stockModeOf(product);
+
+  const settle = (cost: number | null, basis: string): UnitCost => ({
+    mode,
+    cost,
+    basis,
+    margin: cost === null ? null : product.price - cost,
+    marginPercent:
+      cost === null || product.price <= 0 ? null : ((product.price - cost) / product.price) * 100,
+  });
+
+  switch (mode) {
+    case "recipe": {
+      const costed = costProduct(product, db.ingredients);
+      return settle(
+        costed ? costed.unitCost : null,
+        costed
+          ? `${product.recipe?.length ?? 0} ingredients, costed to the gram`
+          : "No recipe set yet",
+      );
+    }
+    case "lot": {
+      const cost = lotUnitCost(product, db);
+      const lot = db.lots.find((l) => l.id === product.lotId);
+      return settle(
+        cost,
+        lot
+          ? `A share of ${lot.reference}, split ${lot.allocation === "by_value" ? "by what each grade sells for" : "evenly"}`
+          : "Not linked to a lot yet",
+      );
+    }
+    case "serial": {
+      const summary = summariseSerials(unitsOf(db, product.id));
+      return settle(
+        summary.averageCost,
+        summary.inStock.length
+          ? `Average of the ${summary.inStock.length} ${summary.inStock.length === 1 ? "unit" : "units"} actually on the shelf`
+          : "No units in stock to cost",
+      );
+    }
+    case "service":
+      return settle(0, "A service — nothing bought in");
+    default:
+      return settle(product.cost || null, product.cost ? "What you paid the supplier" : "No cost price set");
+  }
+}
+
+/** The stock count to trust for a product, whatever mode it is tracked in. */
+export function stockOf(product: Product, db: Database) {
+  if (stockModeOf(product) === "serial") {
+    return unitsOf(db, product.id).filter((unit) => unit.status === "in_stock").length;
+  }
+  return product.stock;
+}
+
+/** Which modes this business is actually using — the rest are never shown. */
+export function activeStockModes(db: Database): StockMode[] {
+  const modes = new Set(db.products.map(stockModeOf));
+  if (db.ingredients.length) modes.add("recipe");
+  if (db.lots.length) modes.add("lot");
+  if (db.serials.length) modes.add("serial");
+  return (["recipe", "lot", "serial", "simple", "service"] as StockMode[]).filter((mode) =>
+    modes.has(mode),
+  );
+}
+
+/** Everything the business has money sitting in, however it is tracked. */
+export function totalStockValue(db: Database) {
+  const simple = db.products
+    .filter((p) => {
+      const mode = stockModeOf(p);
+      return mode === "simple";
+    })
+    .reduce((sum, p) => sum + p.stock * p.cost, 0);
+  return stockValue(db.ingredients) + lotStockValue(db) + serialStockValue(db) + simple;
 }

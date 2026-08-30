@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useSyncExternalStore }
 import { createSeedDatabase, DB_VERSION } from "./seed";
 import { ingredientDraw } from "./costing";
 import { categorise } from "./statements";
+import { riderOwed, sellerReceives, settlementOf } from "./selectors";
 import type {
   Business,
   Capture,
@@ -19,6 +20,9 @@ import type {
   Customer,
   Channel,
   Storefront,
+  DeliverySettlement,
+  Lot,
+  SerialUnit,
   Ingredient,
   RecipeLine,
   StatementImport,
@@ -118,6 +122,8 @@ export interface NewOrderInput {
   customerId: string;
   items: OrderItem[];
   deliveryFee: number;
+  /** Who the fee belongs to. Defaults to the business's usual arrangement. */
+  deliverySettlement?: DeliverySettlement;
   address: string;
   channel: Channel;
   note?: string;
@@ -165,6 +171,17 @@ interface StoreValue {
   signOut: () => void;
   updateStorefront: (patch: Partial<Storefront>) => void;
   toggleStorefrontProduct: (productId: string) => void;
+  /**
+   * The rider is at the door and the seller has seen the money land. This is
+   * the moment the goods change hands, so it is a step of its own.
+   */
+  confirmDeliveryPayment: (deliveryId: string) => void;
+  /** Cash the rider took on the seller's behalf, now handed over. */
+  remitRiderCash: (deliveryId: string) => void;
+  setDeliverySettlement: (orderId: string, settlement: DeliverySettlement) => void;
+  saveLot: (lot: Lot) => void;
+  addSerialUnit: (unit: Omit<SerialUnit, "id">) => void;
+  setSerialStatus: (serialId: string, status: SerialUnit["status"], note?: string) => void;
   saveIngredient: (ingredient: Ingredient) => void;
   addIngredient: (input: Omit<Ingredient, "id">) => void;
   /** Positive to restock, negative to write off. */
@@ -186,9 +203,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const db = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const ready = useSyncExternalStore(subscribe, alwaysTrue, alwaysFalse);
 
+  /**
+   * What the seller actually takes for an order. The delivery fee only counts
+   * when the seller is the one charging it — with an independent boda paid by
+   * the customer at the door, that money never passes through the business.
+   */
   const orderTotal = useCallback(
-    (items: OrderItem[], deliveryFee: number) =>
-      items.reduce((sum, it) => sum + it.price * it.qty, 0) + deliveryFee,
+    (items: OrderItem[], deliveryFee: number, settlement: DeliverySettlement = "business_pays_rider") => {
+      const goods = items.reduce((sum, it) => sum + it.price * it.qty, 0);
+      const collectsFee = settlement === "business_pays_rider" || settlement === "rider_collects";
+      return goods + (collectsFee ? deliveryFee : 0);
+    },
     [],
   );
 
@@ -205,6 +230,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         customerId: input.customerId,
         items: input.items,
         deliveryFee: input.deliveryFee,
+        deliverySettlement:
+          input.deliverySettlement ?? db.business.defaultSettlement ?? "customer_pays_rider",
         discount: 0,
         status: "new",
         paymentStatus: "unpaid",
@@ -224,7 +251,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }));
       return order;
     },
-    [db.orders],
+    [db.orders, db.business.defaultSettlement],
   );
 
   const setOrderStatus = useCallback<StoreValue["setOrderStatus"]>((orderId, status) => {
@@ -242,10 +269,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           type: "income",
           category: "Sales",
           description: `Order ${order.code} — ${customer?.name ?? "Customer"}`,
-          amount: orderTotal(order.items, order.deliveryFee),
+          amount: sellerReceives(order),
           source: "order",
           reference: order.code,
           reconciled: order.paymentStatus === "paid",
+        });
+      }
+
+      // Only a fee the seller is paying is an expense of the business. When the
+      // customer settles with the boda at the door, nothing is posted at all.
+      const owed = riderOwed(order);
+      if (status === "delivered" && !alreadyPosted && order.riderId && owed > 0) {
+        const rider = prev.riders.find((r) => r.id === order.riderId);
+        ledger.unshift({
+          id: id("led"),
+          date: new Date().toISOString(),
+          type: "expense",
+          category: "Delivery",
+          description: `Rider payout ${rider?.name ?? ""} — ${order.code}`.trim(),
+          amount: owed,
+          source: "order",
+          reference: `RID-${order.code.replace("#", "")}`,
+          reconciled: true,
         });
       }
 
@@ -291,21 +336,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ),
       };
     });
-  }, [orderTotal]);
+  }, []);
 
   const assignRider = useCallback<StoreValue["assignRider"]>((orderId, riderId) => {
     setDb((prev) => {
       const order = prev.orders.find((o) => o.id === orderId);
       if (!order) return prev;
       const existing = prev.deliveries.find((d) => d.orderId === orderId);
+      const settlement = settlementOf(order);
       const delivery: Delivery = existing
-        ? { ...existing, riderId, status: "assigned", assignedAt: new Date().toISOString() }
+        ? { ...existing, riderId, status: "assigned", settlement, assignedAt: new Date().toISOString() }
         : {
             id: id("dlv"),
             orderId,
             riderId,
             status: "assigned",
             fee: order.deliveryFee,
+            settlement,
             address: order.address,
             assignedAt: new Date().toISOString(),
           };
@@ -346,7 +393,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (input.orderId) {
         orders = prev.orders.map((o) => {
           if (o.id !== input.orderId) return o;
-          const total = orderTotal(o.items, o.deliveryFee);
+          const total = orderTotal(o.items, o.deliveryFee, settlementOf(o));
           const paid = prev.payments
             .filter((p) => p.orderId === o.id && p.state === "received")
             .reduce((s, p) => s + p.amount, 0) + input.amount;
@@ -363,7 +410,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const payment = prev.payments.find((p) => p.id === paymentId);
       const order = prev.orders.find((o) => o.id === orderId);
       if (!payment || !order) return prev;
-      const total = orderTotal(order.items, order.deliveryFee);
+      const total = orderTotal(order.items, order.deliveryFee, settlementOf(order));
       return {
         ...prev,
         payments: prev.payments.map((p) =>
@@ -570,6 +617,123 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const confirmDeliveryPayment = useCallback<StoreValue["confirmDeliveryPayment"]>(
+    (deliveryId) => {
+      setDb((prev) => ({
+        ...prev,
+        deliveries: prev.deliveries.map((d) =>
+          d.id === deliveryId
+            ? { ...d, status: "awaiting_payment", paymentConfirmedAt: new Date().toISOString() }
+            : d,
+        ),
+      }));
+    },
+    [],
+  );
+
+  const remitRiderCash = useCallback<StoreValue["remitRiderCash"]>((deliveryId) => {
+    setDb((prev) => {
+      const delivery = prev.deliveries.find((d) => d.id === deliveryId);
+      if (!delivery || !delivery.cashCollected || delivery.remittedAt) return prev;
+      const order = prev.orders.find((o) => o.id === delivery.orderId);
+      const rider = prev.riders.find((r) => r.id === delivery.riderId);
+
+      return {
+        ...prev,
+        deliveries: prev.deliveries.map((d) =>
+          d.id === deliveryId ? { ...d, remittedAt: new Date().toISOString() } : d,
+        ),
+        // The money was always the seller's; this records it arriving, not a sale.
+        payments: [
+          {
+            id: id("pay"),
+            orderId: delivery.orderId,
+            customerId: order?.customerId,
+            customerName: `${rider?.name ?? "Rider"} (remittance)`,
+            method: "cash" as const,
+            amount: delivery.cashCollected,
+            reference: "",
+            state: "received" as const,
+            receivedAt: new Date().toISOString(),
+            matched: true,
+            source: "manual" as const,
+          },
+          ...prev.payments,
+        ],
+      };
+    });
+  }, []);
+
+  const setDeliverySettlement = useCallback<StoreValue["setDeliverySettlement"]>(
+    (orderId, settlement) => {
+      setDb((prev) => ({
+        ...prev,
+        orders: prev.orders.map((o) =>
+          o.id === orderId ? { ...o, deliverySettlement: settlement } : o,
+        ),
+        deliveries: prev.deliveries.map((d) => (d.orderId === orderId ? { ...d, settlement } : d)),
+      }));
+    },
+    [],
+  );
+
+  const saveLot = useCallback<StoreValue["saveLot"]>((lot) => {
+    setDb((prev) => ({
+      ...prev,
+      lots: prev.lots.some((l) => l.id === lot.id)
+        ? prev.lots.map((l) => (l.id === lot.id ? lot : l))
+        : [lot, ...prev.lots],
+    }));
+  }, []);
+
+  const addSerialUnit = useCallback<StoreValue["addSerialUnit"]>((unit) => {
+    setDb((prev) => {
+      const serials = [{ ...unit, id: id("srl") }, ...prev.serials];
+      return {
+        ...prev,
+        serials,
+        // Stock follows the units, so it can never drift from what is on the shelf.
+        products: prev.products.map((p) =>
+          p.id === unit.productId
+            ? {
+                ...p,
+                stock: serials.filter((u) => u.productId === p.id && u.status === "in_stock").length,
+              }
+            : p,
+        ),
+      };
+    });
+  }, []);
+
+  const setSerialStatus = useCallback<StoreValue["setSerialStatus"]>((serialId, status, note) => {
+    setDb((prev) => {
+      const target = prev.serials.find((u) => u.id === serialId);
+      if (!target) return prev;
+      const serials = prev.serials.map((u) =>
+        u.id === serialId
+          ? {
+              ...u,
+              status,
+              note: note ?? u.note,
+              soldAt: status === "sold" ? (u.soldAt ?? new Date().toISOString()) : u.soldAt,
+            }
+          : u,
+      );
+      return {
+        ...prev,
+        serials,
+        products: prev.products.map((p) =>
+          p.id === target.productId
+            ? {
+                ...p,
+                stock: serials.filter((u) => u.productId === p.id && u.status === "in_stock").length,
+              }
+            : p,
+        ),
+      };
+    });
+  }, []);
+
   const saveIngredient = useCallback<StoreValue["saveIngredient"]>((ingredient) => {
     setDb((prev) => ({
       ...prev,
@@ -672,6 +836,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       updateStorefront,
       toggleStorefrontProduct,
+      confirmDeliveryPayment,
+      remitRiderCash,
+      setDeliverySettlement,
+      saveLot,
+      addSerialUnit,
+      setSerialStatus,
       saveIngredient,
       addIngredient,
       adjustIngredientStock,
@@ -703,6 +873,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       updateStorefront,
       toggleStorefrontProduct,
+      confirmDeliveryPayment,
+      remitRiderCash,
+      setDeliverySettlement,
+      saveLot,
+      addSerialUnit,
+      setSerialStatus,
       saveIngredient,
       addIngredient,
       adjustIngredientStock,

@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { Avatar } from "./ui/avatar";
 import { ChannelBadge, OrderStatusBadge, PaymentStatusBadge } from "./ui/badge";
 import { money, relativeTime } from "@/lib/format";
-import { orderTotal } from "@/lib/selectors";
+import { sellerReceives } from "@/lib/selectors";
 import type { Customer, Order } from "@/lib/types";
 
 export function OrderRow({ order, customer }: { order: Order; customer?: Customer }) {
@@ -19,7 +19,7 @@ export function OrderRow({ order, customer }: { order: Order; customer?: Custome
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
           <p className="truncate text-[15px] font-semibold">{name}</p>
-          <p className="tabular shrink-0 text-[15px] font-bold">{money(orderTotal(order))}</p>
+          <p className="tabular shrink-0 text-[15px] font-bold">{money(sellerReceives(order))}</p>
         </div>
         <div className="mt-0.5 flex items-center gap-2 text-[12px] text-text-secondary">
           <span className="tabular font-medium">{order.code}</span>

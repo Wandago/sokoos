@@ -19,12 +19,12 @@ Discovery → Conversation → Order → Payment → Delivery → Reconciliation
 | **Customers** | Order history, lifetime spend, and what each person still owes |
 | **Products** | Prices, cost, margin per item, and low-stock warnings |
 | **Payments** | M-Pesa, cash and bank payments, with suggested matches for anything unreconciled |
-| **Deliveries** | Riders, zones, and what is on the road right now |
+| **Deliveries** | Riders, zones, what is on the road, the handover moment, and cash a rider is still holding |
 | **Ledger** | Money in and out, with cost of goods and rider payouts posted automatically |
 | **Smart Capture** | Point the camera at a receipt, or say the transaction out loud; credit or debit is decided from the words and the reasoning is shown |
 | **Statement import** | Paste or upload an M-Pesa or bank statement for any period; anything already in the books is recognised by transaction code and skipped |
 | **Your CFO** | The brief: what the business kept, where it went, and what needs dealing with — every figure showing its workings |
-| **Recipes & store** | What each thing you make costs, to the gram, and what is left in the store to make it with |
+| **Stock** | Counted the way your trade counts it — recipes for anything you make, lots for anything bought as a bale, serials for anything with an IMEI, plain counts for the rest |
 | **Analytics** | Revenue trend, which channel sells, best sellers, top customers |
 | **Settings** | Business details, light/dark/system theme, demo data reset |
 
@@ -228,34 +228,78 @@ whose active tab expands into a lime label.
 Financial states are always visually distinct and never carried by colour alone:
 Paid, Part paid, Unpaid, Cash on delivery, Pending, Failed, Needs review.
 
-## Stack
+## One app, several trades
 
-Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS v4
-· lucide-react. No backend, no chart library, no UI kit.
+A bakery, a thrift stall and a phone shop do not track stock the same way, and
+software that assumes one of them fits none of the others. So the way stock is
+counted lives on the product, not on the app, and a shop doing two of these at
+once gets the right answer for each line.
 
-## Layout
+| Mode | Who it is for | How cost is worked out |
+| --- | --- | --- |
+| **Recipe** | Bakery, restaurant, anything made | From the bill of materials — 400 g of flour, 6 eggs, a box and a board — with wastage on the lines where trim and spillage are real |
+| **Lot** | Thrift bales, cartons, sacks, crates | A share of the landed cost: what you paid, plus transport, duty, sorting and mending |
+| **Serial** | Phones, electronics, anything with an IMEI | The real cost of the real unit, with its own warranty clock. Stock is counted from units, never typed |
+| **Simple** | Most resale | What you paid the supplier |
+| **Service** | Salons, repairs, consulting | Nothing bought in |
 
-```
-app/                 one route per module, all client-rendered
-app/welcome/         first-run onboarding cards
-app/landing/         marketing page
-app/ads/             ad kit
-components/ui/       the design system (button, card, badge, sheet, chart, …)
-components/          app frame, install prompt, order row, brand mark
-components/spot.tsx  flat spot illustrations
-lib/onboarding.tsx   onboarding card content and card themes
-lib/types.ts         the domain model
-lib/seed.ts          the seeded demo business
-lib/store.tsx        local-first store + domain actions
-lib/selectors.ts     derived business metrics
-lib/statements.ts    statement parsing and duplicate detection
-lib/direction.ts     credit or debit, decided from words, with its reasoning
-lib/speech.ts        a spoken sentence into an amount, a party and a direction
-lib/costing.ts       recipe costing and ingredient cover
-lib/cfo.ts           the CFO brief
-scripts/             verification scripts for all of the above
-public/sw.js         service worker (app-shell precache, offline fallback)
-```
+Only the modes a business actually uses appear as tabs on the Stock screen. The
+business type in Settings sets sensible starting points; it never locks anything
+away.
+
+### Why a bale is not divided by the piece count
+
+A trader pays KES 38,000 for a bale, KES 1,800 to get it to the shop and KES
+3,100 to sort, press and mend it. That KES 42,900 has to be spread across the
+105 pieces that came out — 28 Grade A dresses that sell at 2,200, 41 Grade B at
+1,100 and 36 Grade C at 400.
+
+Dividing evenly gives every piece a cost of 409, which says a Grade C top cost
+the same as a Grade A dress. It makes the good stock look barely profitable and
+the bad stock look like a loss, and a trader following those numbers would stop
+buying the very thing paying for the bale.
+
+So the landed cost is allocated by **relative sales value** — the standard
+treatment for a joint cost across outputs of unequal worth. Grade A carries 779
+per piece, Grade B 390, Grade C 142, and every grade shows the same 65% margin,
+which is the honest answer: they all came out of the same bale. An even split is
+still offered, because when a carton holds 48 identical jars it is the right one.
+
+## The rider, and whose money the delivery fee is
+
+Someone sees a dress on TikTok, calls the number in the bio, and says they are in
+Westlands. The dress is 2,200. The boda to Westlands is 200 — and that 200 goes
+to the rider, not to the seller. The rider is an independent operator with a
+working relationship, not an employee: he carries the goods, waits while the
+seller confirms the customer's M-Pesa has landed, hands over, and collects his
+own fare separately.
+
+Counting that 200 as the seller's revenue overstates the business. Counting it as
+their expense overstates it too. Doing both, which is the easy mistake, produces
+a business that looks bigger and busier than it is. So settlement is modelled
+explicitly, per order:
+
+| Arrangement | Customer pays | Seller receives | Seller owes the rider |
+| --- | --- | --- | --- |
+| **Customer pays the rider** (the default) | 2,400 | 2,200 | — |
+| **Seller charges and settles** | 2,400 | 2,400 | 200 |
+| **Rider collects everything** | 2,400 | 2,400 | — (the rider owes 2,400 until they remit) |
+| **Free delivery** | 2,200 | 2,200 | 200 |
+
+Every order sheet shows **what the customer pays** and **what you receive** as two
+separate lines, because whenever the rider is paid at the door they are different
+numbers.
+
+Two things follow from this that nothing else in the app would show:
+
+- **The handover.** A delivery can sit in *waiting for payment* — the rider is
+  with the customer and cannot hand over until the seller confirms the money
+  landed. It is the thirty seconds every Kenyan delivery turns on, so it sits
+  above everything else on the Deliveries screen.
+- **The rider float.** When a rider collects on the seller's behalf, that cash is
+  the seller's money in someone else's pocket. The order reads as paid, so
+  nothing would otherwise tell them it has not arrived. It is counted per rider,
+  per trip, and the CFO raises it.
 
 ## Money, and what the app will not pretend
 
@@ -289,11 +333,16 @@ not, the same sentence can be typed; the parsing that follows is identical
 either way, which is why it is testable. "I received three thousand five hundred
 from Grace" becomes KES 3,500, credit, Grace, Sales.
 
-**Recipes cost from the bill of materials, not a guessed cost field.** Each
-produced product carries its ingredients with units and wastage. Change the
-price of butter and every cake reprices itself. Stock comes off the store when
-an order is marked delivered, so the count stays true without a separate
-stocktake.
+**Cost is worked out the way the trade works it out.** A recipe costs from
+ingredients, a bale from its share of the landed cost, a serialised unit from
+what that exact unit cost. Change the price of butter and every cake reprices
+itself; change a grade's price and every piece in the bale recosts. Stock comes
+off when an order is marked delivered, so the count stays true without a
+separate stocktake.
+
+**A delivery fee the seller never touched is not in their books.** Neither as
+revenue nor as expense. The ledger posts a rider payout only when the seller is
+the one paying it.
 
 **The CFO brief is arithmetic on the seller's own books.** Each finding carries
 the numbers it was derived from. When nothing is wrong it says so rather than
@@ -307,6 +356,37 @@ server holding webhook subscriptions and long-lived tokens. None of that is
 possible in a static, local-first app, and a mock inbox pretending otherwise
 would be worse than its absence. The Inbox screen models conversations from
 those channels, and says plainly that they are entered rather than synced.
+
+## Stack
+
+Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS v4
+· lucide-react. No backend, no chart library, no UI kit.
+
+## Layout
+
+```
+app/                 one route per module, all client-rendered
+app/welcome/         first-run onboarding cards
+app/landing/         marketing page
+app/ads/             ad kit
+components/ui/       the design system (button, card, badge, sheet, chart, …)
+components/          app frame, install prompt, order row, brand mark
+components/spot.tsx  flat spot illustrations
+lib/onboarding.tsx   onboarding card content and card themes
+lib/types.ts         the domain model
+lib/seed.ts          the seeded demo business
+lib/store.tsx        local-first store + domain actions
+lib/selectors.ts     derived business metrics
+lib/statements.ts    statement parsing and duplicate detection
+lib/direction.ts     credit or debit, decided from words, with its reasoning
+lib/speech.ts        a spoken sentence into an amount, a party and a direction
+lib/costing.ts       recipe costing, and one cost answer per stock mode
+lib/lots.ts          bale and carton costing, allocated by sales value
+lib/serials.ts       serialised units, stock counts and warranty clocks
+lib/cfo.ts           the CFO brief
+scripts/             verification scripts for all of the above
+public/sw.js         service worker (app-shell precache, offline fallback)
+```
 
 ## Where it goes next
 

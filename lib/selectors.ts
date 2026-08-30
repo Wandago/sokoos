@@ -1,5 +1,12 @@
 import { isSameDay } from "./format";
-import type { Customer, Database, Order, Product, Rider } from "./types";
+import type {
+  Customer,
+  Database,
+  DeliverySettlement,
+  Order,
+  Product,
+  Rider,
+} from "./types";
 
 /** Timestamp `days` before now — kept out of render memos, which must be pure. */
 export function daysAgoCutoff(days: number) {
@@ -10,8 +17,45 @@ export function orderSubtotal(order: Order) {
   return order.items.reduce((sum, it) => sum + it.price * it.qty, 0);
 }
 
-export function orderTotal(order: Order) {
-  return orderSubtotal(order) + order.deliveryFee - order.discount;
+/**
+ * Records written before delivery settlement was modelled behaved as though
+ * the seller charged the fee and paid the rider, so that is how they are read.
+ */
+export function settlementOf(order: Order): DeliverySettlement {
+  return order.deliverySettlement ?? "business_pays_rider";
+}
+
+/** Goods, after any discount. Never includes the trip. */
+export function goodsTotal(order: Order) {
+  return orderSubtotal(order) - order.discount;
+}
+
+/**
+ * What the seller actually receives.
+ *
+ * When the customer pays the rider directly — the usual arrangement with an
+ * independent boda — the delivery fee never passes through the business, so
+ * adding it here would invent revenue that does not exist. It counts only when
+ * the seller is the one charging for the trip.
+ */
+export function sellerReceives(order: Order) {
+  const settlement = settlementOf(order);
+  const collectsFee = settlement === "business_pays_rider" || settlement === "rider_collects";
+  return goodsTotal(order) + (collectsFee ? order.deliveryFee : 0);
+}
+
+/** What the customer hands over in total, to whoever ends up holding it. */
+export function customerPays(order: Order) {
+  return goodsTotal(order) + (settlementOf(order) === "free" ? 0 : order.deliveryFee);
+}
+
+/**
+ * What the seller owes the rider for this trip. Zero when the customer settles
+ * with the rider at the door.
+ */
+export function riderOwed(order: Order) {
+  const settlement = settlementOf(order);
+  return settlement === "business_pays_rider" || settlement === "free" ? order.deliveryFee : 0;
 }
 
 export function customerOf(db: Database, order: Order): Customer | undefined {
@@ -50,15 +94,15 @@ export function todayStats(db: Database): TodayStats {
 
   const paidRevenue = todays
     .filter((o) => o.paymentStatus === "paid" || o.paymentStatus === "partial")
-    .reduce((sum, o) => sum + (o.paymentStatus === "partial" ? orderTotal(o) / 2 : orderTotal(o)), 0);
+    .reduce((sum, o) => sum + (o.paymentStatus === "partial" ? sellerReceives(o) / 2 : sellerReceives(o)), 0);
 
   const yesterdayRevenue = yesterdays
     .filter((o) => o.paymentStatus === "paid")
-    .reduce((sum, o) => sum + orderTotal(o), 0);
+    .reduce((sum, o) => sum + sellerReceives(o), 0);
 
   const unpaid = todays
     .filter((o) => o.paymentStatus === "unpaid" || o.paymentStatus === "cod")
-    .reduce((sum, o) => sum + orderTotal(o), 0);
+    .reduce((sum, o) => sum + sellerReceives(o), 0);
 
   const revenueChange =
     yesterdayRevenue > 0 ? ((paidRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : 0;
@@ -101,7 +145,7 @@ export function revenueSeries(db: Database, days = 14): DayPoint[] {
             o.paymentStatus === "paid" ||
             (o.paymentStatus === "cod" && o.status === "delivered"),
         )
-        .reduce((sum, o) => sum + orderTotal(o), 0),
+        .reduce((sum, o) => sum + sellerReceives(o), 0),
       orders: dayOrders.length,
     });
   }
@@ -116,7 +160,7 @@ export function channelBreakdown(db: Database, days = 30) {
     .forEach((o) => {
       const current = totals.get(o.channel) ?? { revenue: 0, orders: 0 };
       totals.set(o.channel, {
-        revenue: current.revenue + orderTotal(o),
+        revenue: current.revenue + sellerReceives(o),
         orders: current.orders + 1,
       });
     });
@@ -146,10 +190,10 @@ export function topProducts(db: Database, limit = 5) {
 
 export function customerStats(db: Database, customerId: string) {
   const orders = db.orders.filter((o) => o.customerId === customerId && o.status !== "cancelled");
-  const spent = orders.reduce((sum, o) => sum + orderTotal(o), 0);
+  const spent = orders.reduce((sum, o) => sum + sellerReceives(o), 0);
   const owed = orders
     .filter((o) => o.paymentStatus === "unpaid" || o.paymentStatus === "cod")
-    .reduce((sum, o) => sum + orderTotal(o), 0);
+    .reduce((sum, o) => sum + sellerReceives(o), 0);
   return {
     orders: orders.length,
     spent,
@@ -222,7 +266,7 @@ export function monthOverMonth(db: Database) {
         (o) =>
           o.paymentStatus === "paid" || (o.paymentStatus === "cod" && o.status === "delivered"),
       )
-      .reduce((sum, o) => sum + orderTotal(o), 0);
+      .reduce((sum, o) => sum + sellerReceives(o), 0);
 
   const expenses = (from: number, to: number) =>
     db.ledger
@@ -347,4 +391,59 @@ export function smartInsight(db: Database): { text: string; detail: string } {
     text: "Your books are up to date.",
     detail: "Every payment this week is matched to an order.",
   };
+}
+
+/* ------------------------------------------------------------------ *
+ * The rider float.
+ *
+ * When a rider collects the goods money at the door, that cash is the
+ * seller's — it is just in someone else's pocket until they hand it over. It
+ * is the single easiest thing for a small business to lose track of, because
+ * nothing in the phone shows it: the order looks paid and the money is not
+ * there. So it is counted explicitly.
+ * ------------------------------------------------------------------ */
+
+export function outstandingRiderCash(db: Database) {
+  return db.deliveries.filter((d) => d.cashCollected && !d.remittedAt);
+}
+
+export function riderFloat(db: Database) {
+  return outstandingRiderCash(db).reduce((sum, d) => sum + (d.cashCollected ?? 0), 0);
+}
+
+/** What each rider is holding, most first. */
+export function riderFloatByRider(db: Database) {
+  const totals = new Map<string, number>();
+  outstandingRiderCash(db).forEach((d) => {
+    totals.set(d.riderId, (totals.get(d.riderId) ?? 0) + (d.cashCollected ?? 0));
+  });
+  return [...totals.entries()]
+    .map(([riderId, amount]) => ({
+      rider: db.riders.find((r) => r.id === riderId),
+      amount,
+      trips: outstandingRiderCash(db).filter((d) => d.riderId === riderId).length,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+}
+
+/** Deliveries where the rider is at the door waiting on a payment confirmation. */
+export function awaitingPayment(db: Database) {
+  return db.deliveries.filter((d) => d.status === "awaiting_payment");
+}
+
+/**
+ * Delivery fees the seller never sees, because the customer pays the boda
+ * directly. Worth showing precisely because it is not revenue: it is what the
+ * seller's customers are paying on top, which shapes what they will bear.
+ */
+export function feesPaidDirectToRiders(db: Database, days = 30) {
+  const cutoff = Date.now() - days * 86400000;
+  return db.orders
+    .filter(
+      (o) =>
+        o.status !== "cancelled" &&
+        settlementOf(o) === "customer_pays_rider" &&
+        +new Date(o.createdAt) >= cutoff,
+    )
+    .reduce((sum, o) => sum + o.deliveryFee, 0);
 }

@@ -18,13 +18,56 @@ import { Hydrated } from "@/components/ui/hydrated";
 import Link from "next/link";
 import { Card, Divider } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { ConfirmSheet } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
+import type { BusinessType, DeliverySettlement } from "@/lib/types";
 import { cn } from "@/lib/cn";
+
+/**
+ * The trade decides how stock is counted, not the app.
+ *
+ * A bakery works from recipes, a thrift stall from bales, a phone shop from
+ * serial numbers, and a hardware shop from plain counts. Naming the trade sets
+ * sensible starting points; every product can still be tracked its own way.
+ */
+const businessTypes: { value: BusinessType; label: string; hint: string }[] = [
+  {
+    value: "fashion",
+    label: "Clothes, shoes and accessories",
+    hint: "Plain stock for new pieces, and lots for anything bought as a bale.",
+  },
+  {
+    value: "food",
+    label: "Food, bakery or restaurant",
+    hint: "Recipes, so a cake is costed from the flour, eggs and gas that went into it.",
+  },
+  {
+    value: "electronics",
+    label: "Phones and electronics",
+    hint: "Each unit tracked by serial or IMEI, with its own cost and warranty.",
+  },
+  {
+    value: "beauty",
+    label: "Beauty and cosmetics",
+    hint: "Plain stock, with cartons handled as lots when you buy in bulk.",
+  },
+  {
+    value: "grocery",
+    label: "Grocery and fresh produce",
+    hint: "Lots for anything bought by the sack or crate and sold by the piece.",
+  },
+  {
+    value: "hardware",
+    label: "Hardware and building supplies",
+    hint: "Plain stock, counted and costed simply.",
+  },
+  { value: "services", label: "Services", hint: "Nothing to count — you sell your time." },
+  { value: "general", label: "A bit of everything", hint: "Every way of counting is available." },
+];
 
 export default function SettingsPage() {
   return (
@@ -61,6 +104,10 @@ function SettingsScreen() {
   const [phone, setPhone] = useState(db.business.phone);
   const [till, setTill] = useState(db.business.tillNumber);
   const [fee, setFee] = useState(String(db.business.defaultDeliveryFee));
+  const [type, setType] = useState<BusinessType>(db.business.type ?? "general");
+  const [settlement, setSettlement] = useState<DeliverySettlement>(
+    db.business.defaultSettlement ?? "customer_pays_rider",
+  );
 
   const applyTheme = (next: Theme) => {
     setTheme(next);
@@ -83,7 +130,9 @@ function SettingsScreen() {
     owner !== db.business.owner ||
     phone !== db.business.phone ||
     till !== db.business.tillNumber ||
-    fee !== String(db.business.defaultDeliveryFee);
+    fee !== String(db.business.defaultDeliveryFee) ||
+    type !== (db.business.type ?? "general") ||
+    settlement !== (db.business.defaultSettlement ?? "customer_pays_rider");
 
   return (
     <>
@@ -156,6 +205,19 @@ function SettingsScreen() {
               />
             </Field>
           </div>
+          <Field
+            label="What kind of business is this?"
+            hint={businessTypes.find((t) => t.value === type)?.hint}
+          >
+            <Select value={type} onChange={(e) => setType(e.target.value as BusinessType)}>
+              {businessTypes.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
           <Field label="Default delivery fee">
             <Input
               prefix="KES"
@@ -163,6 +225,21 @@ function SettingsScreen() {
               value={fee}
               onChange={(e) => setFee(e.target.value.replace(/\D/g, ""))}
             />
+          </Field>
+
+          <Field
+            label="Who usually pays the rider?"
+            hint="The starting point on every new order. You can change it per order."
+          >
+            <Select
+              value={settlement}
+              onChange={(e) => setSettlement(e.target.value as DeliverySettlement)}
+            >
+              <option value="customer_pays_rider">The customer, at the door</option>
+              <option value="business_pays_rider">You do, and you charge it on</option>
+              <option value="rider_collects">The rider collects everything for you</option>
+              <option value="free">Delivery is free</option>
+            </Select>
           </Field>
           <Button
             full
@@ -174,6 +251,8 @@ function SettingsScreen() {
                 phone,
                 tillNumber: till,
                 defaultDeliveryFee: Number(fee) || 0,
+                type,
+                defaultSettlement: settlement,
               });
               toast("Saved.");
             }}

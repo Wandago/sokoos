@@ -289,6 +289,13 @@ function Dashboard() {
             </p>
             <p className="mt-1 text-[15px] font-semibold leading-snug">{insight.text}</p>
             <p className="mt-1 text-[13px] leading-relaxed text-ai-text/80">{insight.detail}</p>
+            <Link
+              href="/cfo/"
+              className="mt-2.5 inline-flex items-center gap-1 text-[12px] font-bold text-ai-text hover:underline"
+            >
+              Read the full brief
+              <ChevronRight className="size-3.5" />
+            </Link>
           </div>
         </div>
       </Card>

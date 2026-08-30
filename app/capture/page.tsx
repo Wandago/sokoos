@@ -1,10 +1,16 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   Camera,
   Check,
+  ChevronRight,
   FileText,
+  FileUp,
+  Mic,
   Receipt,
   ScanLine,
   Smartphone,
@@ -24,6 +30,8 @@ import { useStore } from "@/lib/store";
 import { useQuery } from "@/lib/use-query";
 import { fullDate, money, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { CameraSheet } from "@/components/capture/camera-sheet";
+import { VoiceSheet } from "@/components/capture/voice-sheet";
 import type { Capture, CaptureKind } from "@/lib/types";
 
 export default function CapturePage() {
@@ -54,12 +62,20 @@ const kindIcon: Record<CaptureKind, typeof Receipt> = {
 
 const stages = ["Capture", "Understand", "Match", "Confirm", "Ledger"];
 
+const viaLabel: Record<NonNullable<Capture["via"]>, string> = {
+  camera: "Camera",
+  voice: "Spoken",
+  upload: "Uploaded",
+  statement: "Statement",
+};
+
 function CaptureScreen() {
   const { db } = useStore();
   const { get, set } = useQuery();
-  const uploading = get("new") === "1";
+  const uploading = get("new") === "manual";
 
   const open = db.captures.find((c) => c.id === get("id"));
+  const mode = get("new");
   const review = db.captures.filter((c) => c.status === "needs_review");
   const confirmed = db.captures.filter((c) => c.status === "confirmed");
 
@@ -70,22 +86,43 @@ function CaptureScreen() {
         subtitle="Snap it. We organise it. Receipts, M-Pesa messages and statements become records."
       />
 
-      <UploadArea onOpen={() => set("new", "1")} />
-
-      {/* How it works — the five-step promise, stated plainly. */}
-      <div className="mb-6 mt-4 flex flex-wrap gap-2">
-        {stages.map((stage, i) => (
-          <div
-            key={stage}
-            className="flex shrink-0 items-center gap-2 rounded-full bg-surface-sunken px-3 py-1.5 text-[11px] font-semibold text-text-secondary"
-          >
-            <span className="tabular flex size-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-brand-ink">
-              {i + 1}
-            </span>
-            {stage}
-          </div>
-        ))}
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <EntryTile
+          icon={Camera}
+          title="Point the camera"
+          body="Snap a receipt or an invoice"
+          onClick={() => set("new", "camera")}
+        />
+        <EntryTile
+          icon={Mic}
+          title="Just say it"
+          body="Speak the transaction aloud"
+          onClick={() => set("new", "voice")}
+        />
       </div>
+
+      <Link
+        href="/import/"
+        className="mb-4 flex items-center gap-3 rounded-card border border-border-subtle bg-surface p-3.5 shadow-card transition-colors hover:bg-surface-hover"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand-soft-text">
+          <FileUp className="size-5" strokeWidth={2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15px] font-semibold">Import a whole statement</p>
+          <p className="mt-0.5 text-[12px] text-text-secondary">
+            M-Pesa or bank, any period. Duplicates are caught by transaction code.
+          </p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-text-muted" />
+      </Link>
+
+      <button
+        onClick={() => set("new", "manual")}
+        className="mb-6 w-full text-center text-[12px] font-semibold text-text-secondary hover:text-text"
+      >
+        Or upload a file the old way
+      </button>
 
       {review.length > 0 && (
         <>
@@ -114,33 +151,39 @@ function CaptureScreen() {
       )}
 
       {open && <CaptureDetail capture={open} onClose={() => set("id", null)} />}
+      <CameraSheet open={mode === "camera"} onClose={() => set("new", null)} />
+      <VoiceSheet open={mode === "voice"} onClose={() => set("new", null)} />
       <UploadSheet open={uploading} onClose={() => set("new", null)} />
     </>
   );
 }
 
-function UploadArea({ onOpen }: { onOpen: () => void }) {
+function EntryTile({
+  icon: Icon,
+  title,
+  body,
+  onClick,
+}: {
+  icon: typeof Camera;
+  title: string;
+  body: string;
+  onClick: () => void;
+}) {
   return (
     <button
-      onClick={onOpen}
-      className="relative flex w-full flex-col items-center overflow-hidden rounded-card bg-panel px-6 py-8 text-center text-panel-text shadow-float ring-1 ring-white/5"
+      onClick={onClick}
+      className="relative flex flex-col overflow-hidden rounded-card bg-panel p-4 text-left text-panel-text shadow-float ring-1 ring-white/5 transition-transform active:scale-[0.98]"
     >
-      <div
+      <span
         aria-hidden
-        className="pointer-events-none absolute -bottom-20 left-1/2 size-60 -translate-x-1/2 rounded-full opacity-35 blur-2xl"
+        className="pointer-events-none absolute -bottom-14 -right-8 size-36 rounded-full opacity-30 blur-2xl"
         style={{ background: "radial-gradient(circle, var(--lime-500), transparent 70%)" }}
       />
-      <span className="relative mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand text-brand-ink">
-        <Camera className="size-6" strokeWidth={2.1} />
+      <span className="relative mb-3 flex size-11 items-center justify-center rounded-2xl bg-brand text-brand-ink">
+        <Icon className="size-5" strokeWidth={2.1} />
       </span>
-      <span className="relative text-[15px] font-bold">Capture a document</span>
-      <span className="relative mt-1 max-w-xs text-[13px] leading-relaxed text-panel-muted">
-        Photograph a receipt, upload an M-Pesa screenshot, or drop in a full statement.
-      </span>
-      <span className="relative mt-4 inline-flex h-10 items-center gap-2 rounded-full bg-brand px-4 text-[13px] font-semibold text-brand-ink">
-        <Upload className="size-4" />
-        Choose a file
-      </span>
+      <span className="relative text-[15px] font-bold leading-snug">{title}</span>
+      <span className="relative mt-1 text-[12px] leading-relaxed text-panel-muted">{body}</span>
     </button>
   );
 }
@@ -173,8 +216,17 @@ function CaptureCard({ capture, onOpen }: { capture: Capture; onOpen: () => void
             </p>
           )}
         </div>
-        <p className="mt-0.5 truncate text-[12px] text-text-secondary">
-          {kindLabel[capture.kind]} · {relativeTime(capture.uploadedAt)}
+        <p className="mt-0.5 flex items-center gap-1.5 truncate text-[12px] text-text-secondary">
+          {capture.direction && (
+            capture.direction === "credit" ? (
+              <ArrowDownLeft className="size-3.5 shrink-0 text-success" />
+            ) : (
+              <ArrowUpRight className="size-3.5 shrink-0 text-text-muted" />
+            )
+          )}
+          {capture.direction ? (capture.direction === "credit" ? "Money in" : "Money out") : kindLabel[capture.kind]}
+          {" · "}
+          {viaLabel[capture.via ?? "upload"]} · {relativeTime(capture.uploadedAt)}
         </p>
         <div className="mt-2 flex items-center gap-2">
           {capture.status === "needs_review" ? (
@@ -235,6 +287,31 @@ function CaptureDetail({ capture, onClose }: { capture: Capture; onClose: () => 
           </span>
           <ConfidenceMeter value={capture.confidence} className="ml-auto" />
         </div>
+
+        {capture.directionReason && (
+          <div className="rounded-2xl bg-surface-sunken p-3.5">
+            <p className="flex items-center gap-2 text-[13px] font-semibold">
+              {capture.direction === "credit" ? (
+                <ArrowDownLeft className="size-4 text-success" />
+              ) : (
+                <ArrowUpRight className="size-4 text-text-muted" />
+              )}
+              Filed as money {capture.direction === "credit" ? "in" : "out"}
+            </p>
+            <p className="mt-1 text-[12px] leading-relaxed text-text-secondary">
+              {capture.directionReason}
+            </p>
+          </div>
+        )}
+
+        {capture.transcript && (
+          <div className="rounded-2xl border border-border-subtle bg-surface p-3.5">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
+              What you said
+            </p>
+            <p className="text-[14px] leading-relaxed">“{capture.transcript}”</p>
+          </div>
+        )}
 
         {capture.note && (
           <p className="rounded-2xl bg-surface-sunken p-3.5 text-[13px] leading-relaxed text-text-secondary">

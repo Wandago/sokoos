@@ -46,6 +46,12 @@ export type CaptureKind =
 
 export type CaptureStatus = "processing" | "needs_review" | "confirmed";
 
+/** Money in or money out. The single most important thing to get right. */
+export type Direction = "credit" | "debit";
+
+/** How a capture reached the app. */
+export type CaptureVia = "camera" | "voice" | "upload" | "statement";
+
 export interface Customer {
   id: string;
   name: string;
@@ -55,6 +61,49 @@ export interface Customer {
   joinedAt: string;
   notes?: string;
   tags: string[];
+}
+
+/** What a recipe is measured in. Everything converts to the base unit. */
+export type Unit = "kg" | "g" | "l" | "ml" | "piece";
+
+/** The base unit each measure is priced and stocked in. */
+export const baseUnit: Record<Unit, Unit> = {
+  kg: "kg",
+  g: "kg",
+  l: "l",
+  ml: "l",
+  piece: "piece",
+};
+
+/** How many base units one of this unit is worth. 1 g = 0.001 kg. */
+export const unitFactor: Record<Unit, number> = {
+  kg: 1,
+  g: 0.001,
+  l: 1,
+  ml: 0.001,
+  piece: 1,
+};
+
+export interface Ingredient {
+  id: string;
+  name: string;
+  /** The unit stock and cost are held in — always a base unit. */
+  unit: Unit;
+  /** Cost of one base unit, in KES. */
+  costPerUnit: number;
+  stock: number;
+  lowStockAt: number;
+  supplier?: string;
+}
+
+/** One line of a product's bill of materials. */
+export interface RecipeLine {
+  ingredientId: string;
+  /** Quantity in `unit`, which may be finer than the ingredient's base unit. */
+  qty: number;
+  unit: Unit;
+  /** Wastage, trim or spillage, as a percentage on top of qty. */
+  wastagePercent?: number;
 }
 
 export interface Product {
@@ -70,6 +119,11 @@ export interface Product {
   swatch: string;
   emoji: string;
   active: boolean;
+  /**
+   * What one unit of this product is made of. Present for anything produced
+   * rather than resold, which is what lets the app cost a cake to the gram.
+   */
+  recipe?: RecipeLine[];
 }
 
 export interface OrderItem {
@@ -189,6 +243,46 @@ export interface Capture {
   extracted: ExtractedFields;
   matchedOrderId?: string;
   note?: string;
+  /** Credit is money in, debit is money out. */
+  direction?: Direction;
+  via?: CaptureVia;
+  /** What the classifier keyed on, so the seller can check its reasoning. */
+  directionReason?: string;
+  /** The spoken sentence, when the capture came from the microphone. */
+  transcript?: string;
+}
+
+/** A parsed statement row, before it is committed to the ledger. */
+export type StatementRowState =
+  | "new"
+  | "already_imported"
+  | "duplicate_in_file"
+  | "needs_review";
+
+export interface StatementRow {
+  /** The provider's unique code. The whole dedupe rests on this. */
+  code: string;
+  date: string;
+  description: string;
+  amount: number;
+  direction: Direction;
+  balance?: number;
+  state: StatementRowState;
+  /** Why a row was flagged, in plain words. */
+  note?: string;
+}
+
+export interface StatementImport {
+  id: string;
+  source: "mpesa" | "bank";
+  fileName: string;
+  importedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  rowsParsed: number;
+  rowsImported: number;
+  rowsDuplicate: number;
+  rowsReview: number;
 }
 
 export interface Business {
@@ -259,4 +353,6 @@ export interface Database {
   ledger: LedgerEntry[];
   conversations: Conversation[];
   captures: Capture[];
+  ingredients: Ingredient[];
+  imports: StatementImport[];
 }

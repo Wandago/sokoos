@@ -21,7 +21,10 @@ Discovery → Conversation → Order → Payment → Delivery → Reconciliation
 | **Payments** | M-Pesa, cash and bank payments, with suggested matches for anything unreconciled |
 | **Deliveries** | Riders, zones, and what is on the road right now |
 | **Ledger** | Money in and out, with cost of goods and rider payouts posted automatically |
-| **Smart Capture** | Photograph a receipt or M-Pesa message; the fields are extracted, reviewed, then filed |
+| **Smart Capture** | Point the camera at a receipt, or say the transaction out loud; credit or debit is decided from the words and the reasoning is shown |
+| **Statement import** | Paste or upload an M-Pesa or bank statement for any period; anything already in the books is recognised by transaction code and skipped |
+| **Your CFO** | The brief: what the business kept, where it went, and what needs dealing with — every figure showing its workings |
+| **Recipes & store** | What each thing you make costs, to the gram, and what is left in the store to make it with |
 | **Analytics** | Revenue trend, which channel sells, best sellers, top customers |
 | **Settings** | Business details, light/dark/system theme, demo data reset |
 
@@ -122,9 +125,14 @@ npm run build   # static export into ./out
 npm run lint
 ```
 
-`npm run build` produces a fully static site in `out/` — 22 routes, each a real
-`index.html`, about 3 MB in total. There is no server, no database and no
-serverless function anywhere in it.
+```bash
+npm run typecheck
+npm run check   # the money logic, checked without a browser — see scripts/README.md
+```
+
+`npm run build` produces a fully static site in `out/` — 33 routes, each a real
+`index.html`. There is no server, no database and no serverless function
+anywhere in it.
 
 ## Deploying it
 
@@ -240,8 +248,65 @@ lib/types.ts         the domain model
 lib/seed.ts          the seeded demo business
 lib/store.tsx        local-first store + domain actions
 lib/selectors.ts     derived business metrics
+lib/statements.ts    statement parsing and duplicate detection
+lib/direction.ts     credit or debit, decided from words, with its reasoning
+lib/speech.ts        a spoken sentence into an amount, a party and a direction
+lib/costing.ts       recipe costing and ingredient cover
+lib/cfo.ts           the CFO brief
+scripts/             verification scripts for all of the above
 public/sw.js         service worker (app-shell precache, offline fallback)
 ```
+
+## Money, and what the app will not pretend
+
+Four of these modules touch money directly, so it is worth being exact about
+what each one actually does.
+
+**Duplicate detection is a set operation, not a judgement.** Every M-Pesa and
+bank transaction carries a unique code. The importer collects every code already
+in the books — ledger references, payment references, past captures — and asks
+whether each incoming row's code is in that set. Import the same August
+statement twice and the second pass files nothing. Rows with no code at all
+(cash entries, some bank narrations) are marked *needs review* and left
+unticked; they are never silently merged on a date-and-amount guess.
+
+**Credit or debit is decided from words, and shows its reasoning.** A statement
+with separate *Paid In* and *Withdrawn* columns settles it outright — the column
+is the answer. Failing that, `lib/direction.ts` matches the narration against
+weighted phrase lists and returns the phrase it turned on, so the seller sees
+*"'paid to' means money out"* rather than a verdict with no account of itself.
+When nothing decides it, the app says so and files it as money out at low
+confidence rather than guessing confidently.
+
+**The camera really opens; it does not really read.** `getUserMedia` gives a
+live viewfinder, the frame is captured to a canvas and kept on the device. What
+the app does not do is claim to have read the numbers off the photo — OCR needs
+a server, and there is no server. So the seller types the amount, and the app
+does the part it can do honestly.
+
+**Speech is the real Web Speech API where the browser has it.** Where it does
+not, the same sentence can be typed; the parsing that follows is identical
+either way, which is why it is testable. "I received three thousand five hundred
+from Grace" becomes KES 3,500, credit, Grace, Sales.
+
+**Recipes cost from the bill of materials, not a guessed cost field.** Each
+produced product carries its ingredients with units and wastage. Change the
+price of butter and every cake reprices itself. Stock comes off the store when
+an order is marked delivered, so the count stays true without a separate
+stocktake.
+
+**The CFO brief is arithmetic on the seller's own books.** Each finding carries
+the numbers it was derived from. When nothing is wrong it says so rather than
+manufacturing a worry to look useful.
+
+### Social DMs
+
+TikTok, Instagram and Facebook message capture is deliberately not built. TikTok
+has no public DM API at all; Meta's requires a business account, app review and a
+server holding webhook subscriptions and long-lived tokens. None of that is
+possible in a static, local-first app, and a mock inbox pretending otherwise
+would be worse than its absence. The Inbox screen models conversations from
+those channels, and says plainly that they are entered rather than synced.
 
 ## Where it goes next
 

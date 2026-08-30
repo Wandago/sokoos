@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { createSeedDatabase, DB_VERSION } from "./seed";
+import { ingredientDraw } from "./costing";
+import { categorise } from "./statements";
 import type {
   Business,
   Capture,
@@ -17,6 +19,10 @@ import type {
   Customer,
   Channel,
   Storefront,
+  Ingredient,
+  RecipeLine,
+  StatementImport,
+  StatementRow,
 } from "./types";
 
 const STORAGE_KEY = "sokoos.db.v1";
@@ -103,6 +109,11 @@ function id(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/** Stock is held in base units, so keep it to the gram and drop float dust. */
+function round3(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
 export interface NewOrderInput {
   customerId: string;
   items: OrderItem[];
@@ -154,6 +165,18 @@ interface StoreValue {
   signOut: () => void;
   updateStorefront: (patch: Partial<Storefront>) => void;
   toggleStorefrontProduct: (productId: string) => void;
+  saveIngredient: (ingredient: Ingredient) => void;
+  addIngredient: (input: Omit<Ingredient, "id">) => void;
+  /** Positive to restock, negative to write off. */
+  adjustIngredientStock: (ingredientId: string, delta: number) => void;
+  saveRecipe: (productId: string, recipe: RecipeLine[]) => void;
+  /** Writes only the rows the seller kept, and records the import itself. */
+  commitStatementImport: (input: {
+    source: "mpesa" | "bank";
+    fileName: string;
+    rows: StatementRow[];
+    parsed: number;
+  }) => StatementImport;
   resetDemoData: () => void;
 }
 
@@ -226,9 +249,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
+      // A delivered order has actually consumed its ingredients, so the
+      // stocktake moves with the till rather than waiting for a count.
+      let ingredients = prev.ingredients;
+      if (status === "delivered" && !alreadyPosted) {
+        const drawn = new Map<string, number>();
+        order.items.forEach((item) => {
+          const product = prev.products.find((p) => p.id === item.productId);
+          if (!product) return;
+          ingredientDraw(product, item.qty).forEach((draw) => {
+            drawn.set(draw.ingredientId, (drawn.get(draw.ingredientId) ?? 0) + draw.baseQty);
+          });
+        });
+        if (drawn.size) {
+          ingredients = prev.ingredients.map((ing) =>
+            drawn.has(ing.id)
+              ? { ...ing, stock: Math.max(0, round3(ing.stock - (drawn.get(ing.id) ?? 0))) }
+              : ing,
+          );
+        }
+      }
+
       return {
         ...prev,
         ledger,
+        ingredients,
         orders: prev.orders.map((o) => (o.id === orderId ? { ...o, status } : o)),
         deliveries: prev.deliveries.map((d) =>
           d.orderId === orderId
@@ -377,7 +422,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (!capture || capture.status === "confirmed") return prev;
 
       const amount = capture.extracted.amount ?? 0;
-      const isIncome = capture.kind === "mpesa_message" || capture.extracted.category === "Sales";
+      // A classified capture already knows which way the money went; fall back
+      // to the document type only when nothing decided it.
+      const isIncome = capture.direction
+        ? capture.direction === "credit"
+        : capture.kind === "mpesa_message" || capture.extracted.category === "Sales";
       const entry: LedgerEntry = {
         id: id("led"),
         date: capture.extracted.date ?? capture.uploadedAt,
@@ -521,6 +570,79 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const saveIngredient = useCallback<StoreValue["saveIngredient"]>((ingredient) => {
+    setDb((prev) => ({
+      ...prev,
+      ingredients: prev.ingredients.map((i) => (i.id === ingredient.id ? ingredient : i)),
+    }));
+  }, []);
+
+  const addIngredient = useCallback<StoreValue["addIngredient"]>((input) => {
+    setDb((prev) => ({
+      ...prev,
+      ingredients: [...prev.ingredients, { ...input, id: id("ing") }],
+    }));
+  }, []);
+
+  const adjustIngredientStock = useCallback<StoreValue["adjustIngredientStock"]>(
+    (ingredientId, delta) => {
+      setDb((prev) => ({
+        ...prev,
+        ingredients: prev.ingredients.map((i) =>
+          i.id === ingredientId ? { ...i, stock: Math.max(0, round3(i.stock + delta)) } : i,
+        ),
+      }));
+    },
+    [],
+  );
+
+  const saveRecipe = useCallback<StoreValue["saveRecipe"]>((productId, recipe) => {
+    setDb((prev) => ({
+      ...prev,
+      products: prev.products.map((p) =>
+        p.id === productId ? { ...p, recipe: recipe.length ? recipe : undefined } : p,
+      ),
+    }));
+  }, []);
+
+  const commitStatementImport = useCallback<StoreValue["commitStatementImport"]>((input) => {
+    const kept = input.rows;
+    const dates = kept.map((r) => +new Date(r.date)).sort((a, b) => a - b);
+    const record: StatementImport = {
+      id: id("imp"),
+      source: input.source,
+      fileName: input.fileName,
+      importedAt: new Date().toISOString(),
+      periodStart: new Date(dates[0] ?? Date.now()).toISOString(),
+      periodEnd: new Date(dates[dates.length - 1] ?? Date.now()).toISOString(),
+      rowsParsed: input.parsed,
+      rowsImported: kept.length,
+      rowsDuplicate: input.parsed - kept.length,
+      rowsReview: kept.filter((r) => r.state === "needs_review").length,
+    };
+
+    setDb((prev) => ({
+      ...prev,
+      imports: [record, ...prev.imports],
+      ledger: [
+        ...kept.map<LedgerEntry>((row) => ({
+          id: id("led"),
+          date: row.date,
+          type: row.direction === "credit" ? "income" : "expense",
+          category: categorise(row.description, row.direction),
+          description: row.description,
+          amount: row.amount,
+          source: "capture",
+          reference: row.code || `IMP-${record.id.toUpperCase()}`,
+          reconciled: true,
+        })),
+        ...prev.ledger,
+      ],
+    }));
+
+    return record;
+  }, []);
+
   const resetDemoData = useCallback(() => {
     setDb(createSeedDatabase());
   }, []);
@@ -550,6 +672,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       updateStorefront,
       toggleStorefrontProduct,
+      saveIngredient,
+      addIngredient,
+      adjustIngredientStock,
+      saveRecipe,
+      commitStatementImport,
       resetDemoData,
     }),
     [
@@ -576,6 +703,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       signOut,
       updateStorefront,
       toggleStorefrontProduct,
+      saveIngredient,
+      addIngredient,
+      adjustIngredientStock,
+      saveRecipe,
+      commitStatementImport,
       resetDemoData,
     ],
   );

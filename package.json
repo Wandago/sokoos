@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check": "npx tsx scripts/dedupe-check.ts && npx tsx scripts/speech-check.ts && npx tsx scripts/desc-check.ts && npx tsx scripts/cfo-check.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "lucide-react": "^1.37.0",

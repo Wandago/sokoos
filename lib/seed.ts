@@ -13,9 +13,11 @@ import type {
   Rider,
   Channel,
   Storefront,
+  Ingredient,
+  RecipeLine,
 } from "./types";
 
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /** ISO timestamp `days` ago at a given wall-clock time. */
 function isToday(iso: string) {
@@ -613,6 +615,66 @@ function buildDatabase(): Database {
     },
   ];
 
+  // A seller who bakes needs costing to the gram, not a flat "cost price".
+  const ingredients: Ingredient[] = [
+    ["Plain flour", "kg", 145, 48, 10, "Gikomba Millers"],
+    ["Caster sugar", "kg", 190, 26, 6, "Gikomba Millers"],
+    ["Butter", "kg", 980, 9, 3, "Brookside"],
+    ["Eggs", "piece", 22, 240, 60, "Kienyeji Farm"],
+    ["Fresh milk", "l", 78, 34, 8, "Brookside"],
+    ["Baking powder", "kg", 620, 3, 1, "Gikomba Millers"],
+    ["Vanilla essence", "l", 2400, 1.4, 0.5, "Chandarana"],
+    ["Cocoa powder", "kg", 1350, 4.5, 1, "Chandarana"],
+    ["Icing sugar", "kg", 260, 12, 4, "Gikomba Millers"],
+    ["Cooking oil", "l", 320, 18, 5, "Bidco"],
+    ["Cake box", "piece", 45, 120, 40, "Biashara Packaging"],
+    ["Cake board", "piece", 30, 150, 50, "Biashara Packaging"],
+  ].map(([name, unit, costPerUnit, stock, lowStockAt, supplier], i) => ({
+    id: `ing_${i + 1}`,
+    name: name as string,
+    unit: unit as Ingredient["unit"],
+    costPerUnit: costPerUnit as number,
+    stock: stock as number,
+    lowStockAt: lowStockAt as number,
+    supplier: supplier as string,
+  }));
+
+  // Bills of materials for the products that are actually produced. Wastage is
+  // on the lines where trim and spillage are real.
+  const recipes: Record<string, RecipeLine[]> = {
+    prd_13: [
+      { ingredientId: "ing_1", qty: 400, unit: "g" },
+      { ingredientId: "ing_2", qty: 320, unit: "g" },
+      { ingredientId: "ing_3", qty: 250, unit: "g", wastagePercent: 4 },
+      { ingredientId: "ing_4", qty: 6, unit: "piece" },
+      { ingredientId: "ing_5", qty: 180, unit: "ml" },
+      { ingredientId: "ing_6", qty: 12, unit: "g" },
+      { ingredientId: "ing_7", qty: 8, unit: "ml" },
+      { ingredientId: "ing_9", qty: 180, unit: "g", wastagePercent: 8 },
+      { ingredientId: "ing_11", qty: 1, unit: "piece" },
+      { ingredientId: "ing_12", qty: 1, unit: "piece" },
+    ],
+    prd_14: [
+      { ingredientId: "ing_1", qty: 380, unit: "g" },
+      { ingredientId: "ing_2", qty: 300, unit: "g" },
+      { ingredientId: "ing_3", qty: 220, unit: "g", wastagePercent: 4 },
+      { ingredientId: "ing_4", qty: 5, unit: "piece" },
+      { ingredientId: "ing_5", qty: 200, unit: "ml" },
+      { ingredientId: "ing_8", qty: 90, unit: "g", wastagePercent: 5 },
+      { ingredientId: "ing_6", qty: 10, unit: "g" },
+      { ingredientId: "ing_9", qty: 160, unit: "g", wastagePercent: 8 },
+      { ingredientId: "ing_11", qty: 1, unit: "piece" },
+      { ingredientId: "ing_12", qty: 1, unit: "piece" },
+    ],
+    prd_15: [
+      { ingredientId: "ing_1", qty: 120, unit: "g" },
+      { ingredientId: "ing_2", qty: 70, unit: "g" },
+      { ingredientId: "ing_4", qty: 1, unit: "piece" },
+      { ingredientId: "ing_5", qty: 60, unit: "ml" },
+      { ingredientId: "ing_10", qty: 25, unit: "ml", wastagePercent: 12 },
+    ],
+  };
+
   const storefront: Storefront = {
     slug: "zawadi-collection",
     template: "spotlight",
@@ -632,9 +694,57 @@ function buildDatabase(): Database {
     published: true,
   };
 
+  // Three produced lines, so the costing screen has something real to chew on.
+  products.push(
+    {
+      id: "prd_13",
+      name: "Vanilla Celebration Cake",
+      sku: "ZC-CK-13",
+      price: 3500,
+      cost: 0,
+      stock: 6,
+      lowStockAt: 2,
+      category: "Bakery",
+      swatch: "#d97706",
+      emoji: "🎂",
+      active: true,
+      recipe: recipes.prd_13,
+    },
+    {
+      id: "prd_14",
+      name: "Chocolate Fudge Cake",
+      sku: "ZC-CK-14",
+      price: 4200,
+      cost: 0,
+      stock: 4,
+      lowStockAt: 2,
+      category: "Bakery",
+      swatch: "#7c2d12",
+      emoji: "🍫",
+      active: true,
+      recipe: recipes.prd_14,
+    },
+    {
+      id: "prd_15",
+      name: "Mandazi (6 pack)",
+      sku: "ZC-MD-15",
+      price: 250,
+      cost: 0,
+      stock: 30,
+      lowStockAt: 10,
+      category: "Bakery",
+      swatch: "#b45309",
+      emoji: "🥯",
+      active: true,
+      recipe: recipes.prd_15,
+    },
+  );
+
   return {
     version: DB_VERSION,
     storefront,
+    ingredients,
+    imports: [],
     business: {
       name: "Zawadi Collection",
       owner: "Louis Wandago",

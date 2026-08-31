@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { createSeedDatabase, DB_VERSION } from "./seed";
 import { ingredientDraw, toBaseQty } from "./costing";
+import { industryFor } from "./industries";
 import { categorise } from "./statements";
 import { riderOwed, sellerReceives, settlementOf } from "./selectors";
 import type {
@@ -26,6 +27,7 @@ import type {
   Booking,
   BookingState,
   Service,
+  StaffMember,
   Ingredient,
   RecipeLine,
   StatementImport,
@@ -151,6 +153,8 @@ export interface SignUpInput {
   businessName: string;
   tillNumber: string;
   location: string;
+  /** The trade, which decides the starting catalogue and how stock is counted. */
+  industryId?: string;
 }
 
 interface StoreValue {
@@ -568,8 +572,71 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = useCallback<StoreValue["signUp"]>((input) => {
+    const industry = industryFor(undefined, input.industryId);
+
+    /* A blank Products screen is where most of these apps die: the seller opens
+     * it, sees nothing, and never comes back. So the trade brings its own
+     * starting list, at rough Nairobi prices, for them to correct rather than
+     * invent. Everything here is editable and deletable. */
+    const starterProducts: Product[] = industry.products.map((item, i) => ({
+      id: `prd_start_${i + 1}`,
+      name: item.name,
+      sku: `${industry.id.slice(0, 3).toUpperCase()}-${String(i + 1).padStart(2, "0")}`,
+      price: item.price,
+      cost: item.cost,
+      stock: 0,
+      lowStockAt: 3,
+      category: item.category,
+      swatch: "#1d4ed8",
+      emoji: item.emoji,
+      active: true,
+      stockMode: item.stockMode,
+    }));
+
+    const starterServices: Service[] = industry.services.map((item, i) => ({
+      id: `svc_start_${i + 1}`,
+      name: item.name,
+      durationMinutes: item.durationMinutes,
+      bufferMinutes: item.bufferMinutes,
+      price: item.price,
+      priceMode: item.priceMode,
+      category: item.category,
+      swatch: "#0f766e",
+      emoji: item.emoji,
+      active: true,
+      depositPercent: item.depositPercent,
+    }));
+
+    /* The owner is the first and usually the only member of the team. Their
+     * hours are the capacity of the business, never a cost it pays. */
+    const owner: StaffMember = {
+      id: "stf_owner",
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      role: "Owner",
+      kind: "owner",
+      hourlyCost: 0,
+      workingDays: [1, 2, 3, 4, 5, 6],
+      startHour: 9,
+      endHour: 18,
+      active: true,
+    };
+
     setDb((prev) => ({
       ...prev,
+      products: starterProducts,
+      services: starterServices,
+      staff: [owner],
+      // A fresh business has no history, so none of the demo's is kept.
+      orders: [],
+      payments: [],
+      deliveries: [],
+      ledger: [],
+      captures: [],
+      imports: [],
+      lots: [],
+      serials: [],
+      ingredients: [],
       account: {
         name: input.name.trim(),
         email: input.email.trim().toLowerCase(),
@@ -583,6 +650,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         phone: input.phone.trim(),
         tillNumber: input.tillNumber.trim(),
         location: input.location.trim() || prev.business.location,
+        type: industry.type,
+        industry: industry.id,
+        defaultSettlement: "customer_pays_rider",
       },
       // The mini site exists the moment the account does — the seller only
       // has to decide how it looks.

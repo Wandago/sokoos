@@ -328,14 +328,15 @@ export function dedupe(rows: StatementRow[], db: Database): DedupeSummary {
 export function categorise(description: string, direction: Direction) {
   const text = description.toLowerCase();
   if (direction === "credit") return "Sales";
-  if (/airtime|bundle|safaricom|data/.test(text)) return "Airtime & data";
-  if (/rent|landlord/.test(text)) return "Rent";
-  if (/fuel|petrol|shell|total|rubis/.test(text)) return "Transport";
-  if (/rider|boda|delivery|courier/.test(text)) return "Delivery";
-  if (/pack|box|bag|tissue/.test(text)) return "Packaging";
-  if (/flour|sugar|milk|market|wholesale|supplier|gikomba|stock/.test(text)) return "Stock";
-  if (/ads|boost|promo|marketing/.test(text)) return "Marketing";
-  if (/salary|wage|casual/.test(text)) return "Salaries";
+  // Both languages, since the seller narrates in whichever comes out first.
+  if (/airtime|bundle|safaricom|data|kadi/.test(text)) return "Airtime & data";
+  if (/rent|landlord|kodi ya nyumba|kodi/.test(text)) return "Rent";
+  if (/fuel|petrol|shell|total|rubis|mafuta|nauli|matatu/.test(text)) return "Transport";
+  if (/rider|boda|delivery|courier|mzigo/.test(text)) return "Delivery";
+  if (/pack|box|bag|tissue|karatasi|mfuko/.test(text)) return "Packaging";
+  if (/flour|sugar|milk|market|wholesale|supplier|gikomba|stock|unga|sukari|maziwa|soko|bidhaa/.test(text)) return "Stock";
+  if (/ads|boost|promo|marketing|matangazo/.test(text)) return "Marketing";
+  if (/salary|wage|casual|mshahara|vibarua/.test(text)) return "Salaries";
   if (/charge|fee|excise|levy/.test(text)) return "Bank charges";
   return "Other";
 }

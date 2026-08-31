@@ -43,6 +43,7 @@ import { costedServices } from "@/lib/services";
 import { serialisedProducts } from "@/lib/serials";
 import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { AddThingSheet } from "@/components/catalogue/add-sheet";
 import { LotSheet } from "@/components/stock/lot-sheet";
 import { SerialSheet } from "@/components/stock/serial-sheet";
 import type { Ingredient, StockMode, Unit } from "@/lib/types";
@@ -116,6 +117,12 @@ function StockScreen() {
       <PageHeader
         title="Stock"
         subtitle="What you have, what it cost, and how much is left — counted the way your trade actually counts it."
+        action={
+          <Button size="sm" onClick={() => set("new", "1")}>
+            <Plus className="size-4" strokeWidth={2.5} />
+            Add
+          </Button>
+        }
       />
 
       <div className="mb-5 grid grid-cols-2 gap-2.5">
@@ -224,9 +231,9 @@ function StockScreen() {
           <div className="mb-4 flex gap-3 rounded-2xl bg-surface-sunken p-3.5">
             <Timer className="size-5 shrink-0 text-text-secondary" />
             <p className="text-[12px] leading-relaxed text-text-secondary">
-              A service costs what the time costs plus whatever it uses up. Both jobs fill the same
-              diary, so the number to compare is what each clears per hour — not the price on the
-              board.
+              Your own hours are not a cost — they are what you have to sell. So what each job
+              leaves you, divided by the hours it eats, is the number to compare. The dearest job
+              on the list is not always the best use of a morning.
             </p>
           </div>
           <div className="space-y-2.5">
@@ -248,24 +255,28 @@ function StockScreen() {
                     <p className="tabular shrink-0 text-[15px] font-bold">{money(service.price)}</p>
                   </div>
                   <p className="mt-0.5 text-[12px] text-text-secondary">
-                    {service.durationMinutes}m
-                    {service.bufferMinutes ? ` + ${service.bufferMinutes}m turnaround` : ""} · costs{" "}
-                    {money(cost.total)} ({money(cost.labour)} time
-                    {cost.materials > 0 ? ` + ${money(cost.materials)} materials` : ""})
+                    {cost.hours.toFixed(1)}h
+                    {service.bufferMinutes ? ` incl. ${service.bufferMinutes}m turnaround` : ""}
+                    {cost.materials > 0 ? ` · ${money(cost.materials)} materials` : " · nothing bought in"}
+                    {cost.paidLabour > 0 ? ` · ${money(cost.paidLabour)} paid time` : ""}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge
                       tone={
-                        cost.margin < 0
+                        cost.earns < 0
                           ? "danger"
-                          : cost.marginPercent >= 45
+                          : cost.earnsPercent >= 60
                             ? "success"
                             : "pending"
                       }
                     >
-                      {cost.margin < 0 ? "Loses money" : `${cost.marginPercent.toFixed(0)}% margin`}
+                      {cost.earns < 0
+                        ? "Costs more than it earns"
+                        : `Leaves ${money(cost.earns)}`}
                     </Badge>
-                    <Badge tone="neutral">{money(cost.profitPerHour)}/hr</Badge>
+                    <Badge tone={cost.earnsPerHour < 0 ? "danger" : "neutral"}>
+                      {money(cost.earnsPerHour)}/hr
+                    </Badge>
                     {service.depositPercent ? (
                       <Badge tone="neutral">{service.depositPercent}% deposit</Badge>
                     ) : null}
@@ -351,6 +362,7 @@ function StockScreen() {
       {openIngredient && (
         <IngredientSheet ingredient={openIngredient} onClose={() => set("ing", null)} />
       )}
+      <AddThingSheet open={get("new") === "1"} onClose={() => set("new", null)} />
       {openLot && <LotSheet lotId={openLot.id} onClose={() => set("lot", null)} />}
       {openSerialProduct && (
         <SerialSheet productId={openSerialProduct.id} onClose={() => set("serial", null)} />

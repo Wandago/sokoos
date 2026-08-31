@@ -1,6 +1,6 @@
 import type { Database, LedgerEntry } from "./types";
 import { costedProducts, lowIngredients, stockValue } from "./costing";
-import { capacityOn, costedServices, unpaidDeposits } from "./services";
+import { capacityOn, costedServices, fasterBy, unpaidDeposits } from "./services";
 import {
   ledgerTotals,
   monthOverMonth,
@@ -187,41 +187,42 @@ export function cfoFindings(db: Database): Finding[] {
     });
   }
 
-  // 4a. A service sold for less than the time and materials it takes.
+  // 4a. A job that does not even cover what it consumes.
   const services = costedServices(db);
-  const losingService = services.find((row) => row.cost.margin < 0);
+  const losingService = services.find((row) => row.cost.earns < 0);
   if (losingService) {
     const { service, cost } = losingService;
     found.push({
       id: "service-underwater",
       severity: "urgent",
-      title: `${service.name} loses money every time`,
-      figure: kes(Math.abs(cost.margin)),
-      body: `It is priced at ${kes(service.price)}. The hours cost ${kes(cost.labour)} and the materials ${kes(cost.materials)} — ${kes(cost.total)} before anything else. ${
-        cost.materials > cost.labour
-          ? "The materials alone are more than the labour, so this is a pricing problem before it is a time one."
-          : "Your own time is the part that is easy to leave out, and it is most of the gap."
-      }`,
-      workings: `${kes(service.price)} price − ${kes(cost.labour)} labour − ${kes(cost.materials)} materials.`,
+      title: `${service.name} costs more than it earns`,
+      figure: kes(Math.abs(cost.earns)),
+      body: `It is priced at ${kes(service.price)} and ${kes(cost.cashCost)} goes straight back out on ${cost.materials > cost.paidLabour ? "materials" : "paid time"}. You end up ${kes(Math.abs(cost.earns))} down and ${cost.hours.toFixed(1)} hours poorer, before you have paid yourself anything.`,
+      workings: `${kes(service.price)} price − ${kes(cost.materials)} materials${cost.paidLabour > 0 ? ` − ${kes(cost.paidLabour)} paid time` : ""}.`,
       action: { label: "Open the service", href: `/stock/?service=${service.id}` },
     });
   }
 
   // 4b. The job that fills the diary is not always the job worth doing.
-  // Compare only jobs that make money; one that loses money is its own finding.
-  const earning = services.filter((row) => row.cost.profitPerHour > 0);
+  // Compare only jobs that earn; one that does not is its own finding.
+  const earning = services.filter((row) => row.cost.earnsPerHour > 0);
   if (earning.length > 1) {
     const worst = earning[0];
     const best = earning[earning.length - 1];
-    if (best.cost.profitPerHour > worst.cost.profitPerHour * 2) {
+    if (best.cost.earnsPerHour > worst.cost.earnsPerHour * 2) {
+      const faster = fasterBy(worst.service, db, Math.min(20, Math.round(worst.service.durationMinutes * 0.2)));
       found.push({
-        id: "profit-per-hour",
+        id: "earns-per-hour",
         severity: "watch",
         title: "An hour is not an hour",
-        figure: `${kes(best.cost.profitPerHour)}/hr`,
-        body: `${best.service.name} clears ${kes(best.cost.profitPerHour)} an hour. ${worst.service.name} clears ${kes(worst.cost.profitPerHour)}. Both fill the same diary, so an hour given to one is an hour taken from the other.`,
-        workings: `Profit after labour and materials, divided by the time each job occupies including turnaround.`,
-        action: { label: "Compare the services", href: "/stock/" },
+        figure: `${kes(best.cost.earnsPerHour)}/hr`,
+        body: `${best.service.name} leaves you ${kes(best.cost.earnsPerHour)} an hour. ${worst.service.name} leaves ${kes(worst.cost.earnsPerHour)}. Both eat the same day.${
+          faster.extraJobs > 0
+            ? ` Take ${faster.savedMinutes} minutes off the slower one and you fit ${faster.extraJobs} more a week — about ${kes(faster.extraEarnings)}, without raising a price.`
+            : ""
+        }`,
+        workings: `What each job leaves after materials and any paid time, divided by the hours it occupies including turnaround.`,
+        action: { label: "Compare the work", href: "/stock/" },
       });
     }
   }

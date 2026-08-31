@@ -2,6 +2,7 @@
 import { createSeedDatabase } from "../lib/seed";
 import {
   bookingsOn,
+  fasterBy,
   capacityOn,
   costService,
   costedServices,
@@ -20,32 +21,56 @@ const expect = (label: string, got: unknown, want: unknown) => {
   console.log(`${ok ? "ok  " : "FAIL"} ${label}: ${JSON.stringify(got)}${ok ? "" : ` (want ${JSON.stringify(want)})`}`);
 };
 
-console.log("services, worst profit per hour first:\n");
+console.log("what each job leaves, worst per hour first:\n");
 costedServices(db).forEach(({ service, cost }) =>
   console.log(
     ` ${service.name.padEnd(30)} ${String(service.price).padStart(5)} ` +
-      `labour ${cost.labour.toFixed(0).padStart(5)} + materials ${cost.materials.toFixed(0).padStart(4)} ` +
-      `= ${cost.total.toFixed(0).padStart(5)}  margin ${cost.marginPercent.toFixed(0).padStart(3)}%  ` +
-      `${cost.profitPerHour.toFixed(0).padStart(5)}/hr`,
+      `${cost.hours.toFixed(1)}h  materials ${cost.materials.toFixed(0).padStart(4)}  ` +
+      `paid time ${cost.paidLabour.toFixed(0).padStart(5)}  ` +
+      `leaves ${cost.earns.toFixed(0).padStart(5)} = ${cost.earnsPerHour.toFixed(0).padStart(5)}/hr` +
+      `${cost.ownerOnly ? "  (your own hours)" : ""}`,
   ),
 );
 
-// Leaving your own labour out is the classic mistake; the costing must not.
-const hem = db.services.find((s) => s.id === "svc_1")!;
-const hemCost = costService(hem, db);
-// 45 min + 10 min buffer at Mercy's 520/hr.
-expect("labour is charged on the time the chair is occupied", Math.round(hemCost.labour), Math.round((55 / 60) * 520));
-expect("materials come from the same store as recipes", hemCost.materialLines.length, 1);
-expect("total is labour plus materials", Math.round(hemCost.total), Math.round(hemCost.labour + hemCost.materials));
+/* The correction that matters: an owner's hour is not money leaving the
+ * business. Charging it as a cost says their own profit is an expense. */
+const styling = db.services.find((s) => s.id === "svc_5")!; // owner does this one
+const stylingCost = costService(styling, db);
+expect("an owner's hours are not charged as a cost", stylingCost.paidLabour, 0);
+expect("they are counted as hours spent", Math.round(stylingCost.ownerHours * 10), 10);
+expect("so the job leaves the whole price, less materials", Math.round(stylingCost.earns), styling.price);
+expect("and it is flagged as owner-only", stylingCost.ownerOnly, true);
 
-// A quoted job with no assigned staff must still cost something honest.
-const styling = db.services.find((s) => s.id === "svc_5")!;
-expect("a staffed service uses the real rate", costService(styling, db).assumedRate, false);
+// An employee's hour, by contrast, is money that really goes out.
+const hem = db.services.find((s) => s.id === "svc_1")!; // Mercy, employed
+const hemCost = costService(hem, db);
+expect("an employee's time is a real cost", Math.round(hemCost.paidLabour), Math.round((55 / 60) * 520));
+expect("charged on the time the chair is occupied, buffer included", Math.round(hemCost.hours * 100), Math.round((55 / 60) * 100));
+expect("materials come from the same store as recipes", hemCost.materialLines.length, 1);
 expect(
-  "an unstaffed one says it assumed a rate",
-  costService({ ...styling, staffIds: [] }, db).assumedRate,
+  "what it leaves is the price less everything that actually goes out",
+  Math.round(hemCost.earns),
+  Math.round(hem.price - hemCost.paidLabour - hemCost.materials),
+);
+
+expect("a staffed service knows whose time it is", stylingCost.assumedRate, false);
+expect(
+  "an unassigned one assumes you are doing it yourself",
+  costService({ ...styling, staffIds: [] }, db).ownerOnly,
   true,
 );
+
+/* Price is set by what customers will pay. Time is the lever a sole trader
+ * actually controls, so being quicker has to be measurable. */
+const faster = fasterBy(hem, db, 15);
+console.log(
+  `\n${hem.name}: ${faster.done} done in ${faster.days} days. 15 min off each = ` +
+    `${faster.hoursSaved.toFixed(1)}h back = ${faster.extraJobs} more job(s), about ${Math.round(faster.extraEarnings)}`,
+);
+expect("the saving is grounded in jobs actually done", faster.hoursSaved, (faster.done * 15) / 60);
+expect("freed hours become whole jobs, not fractions", faster.extraJobs, Math.floor(faster.hoursSaved / faster.hoursAfter));
+expect("and the extra is counted at what each job leaves", Math.round(faster.extraEarnings), Math.round(faster.extraJobs * hemCost.earns));
+expect("saving no time changes nothing", fasterBy(hem, db, 0).extraJobs, 0);
 
 /* The seed snaps every booking onto a day its tailor actually works, so on a
  * Sunday the diary is legitimately empty. Test the day the work is on. */

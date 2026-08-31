@@ -4,13 +4,14 @@ import { Suspense, useMemo, useState } from "react";
 import { Boxes, Plus } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui/page";
 import { Hydrated } from "@/components/ui/hydrated";
-import { SearchInput, Field, Input, Select } from "@/components/ui/field";
+import { SearchInput, Field, Input } from "@/components/ui/field";
 import { EmptyState, ListSkeleton } from "@/components/ui/state";
 import { Sheet } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
+import { AddThingSheet } from "@/components/catalogue/add-sheet";
 import { useQuery } from "@/lib/use-query";
 import { topProducts } from "@/lib/selectors";
 import { money } from "@/lib/format";
@@ -151,7 +152,7 @@ function ProductsScreen() {
       )}
 
       {open && <ProductSheet product={open} onClose={() => set("id", null)} />}
-      <AddProductSheet open={adding} onClose={() => setAdding(false)} />
+      <AddThingSheet open={adding} onClose={() => setAdding(false)} />
     </>
   );
 }
@@ -234,95 +235,4 @@ function ProductSheet({ product, onClose }: { product: Product; onClose: () => v
   );
 }
 
-const categories = ["Dresses", "Sets", "Outerwear", "Accessories", "Beauty", "Footwear", "Bags", "Jewellery"];
 
-function AddProductSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { addProduct } = useStore();
-  const toast = useToast();
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [cost, setCost] = useState("");
-  const [stock, setStock] = useState("");
-  const [category, setCategory] = useState(categories[0]);
-
-  return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title="Add a product"
-      footer={
-        <Button
-          full
-          size="lg"
-          disabled={!name.trim() || !price}
-          onClick={() => {
-            addProduct({
-              name: name.trim(),
-              sku: `ZC-${name.slice(0, 2).toUpperCase()}-${Math.floor(Math.random() * 90 + 10)}`,
-              price: Number(price) || 0,
-              cost: Number(cost) || 0,
-              stock: Number(stock) || 0,
-              lowStockAt: 5,
-              category,
-              swatch: "#018059",
-              emoji: "🛍️",
-              active: true,
-            });
-            setName("");
-            setPrice("");
-            setCost("");
-            setStock("");
-            onClose();
-            toast("Product added.");
-          }}
-        >
-          Add product
-        </Button>
-      }
-    >
-      <div className="space-y-4 pb-4">
-        <Field label="Name">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ankara Wrap Dress"
-          />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Selling price">
-            <Input
-              prefix="KES"
-              inputMode="numeric"
-              value={price}
-              onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))}
-            />
-          </Field>
-          <Field label="Cost price">
-            <Input
-              prefix="KES"
-              inputMode="numeric"
-              value={cost}
-              onChange={(e) => setCost(e.target.value.replace(/\D/g, ""))}
-            />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Stock">
-            <Input
-              inputMode="numeric"
-              value={stock}
-              onChange={(e) => setStock(e.target.value.replace(/\D/g, ""))}
-            />
-          </Field>
-          <Field label="Category">
-            <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {categories.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-      </div>
-    </Sheet>
-  );
-}

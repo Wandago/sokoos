@@ -248,27 +248,65 @@ Only the modes a business actually uses appear as tabs on the Stock screen. The
 business type in Settings sets sensible starting points; it never locks anything
 away.
 
+### Choosing a trade, not a category
+
+"Small business" is not a category — it is a hundred different trades that
+happen to be small, and handing all of them the same empty Products screen makes
+every one of them do the translating. So the app ships eleven trades, each with
+its own vocabulary, its own default way of counting, and a starter list of the
+things that trade actually sells at rough Nairobi prices:
+
+clothes and thrift · bakery and home kitchen · restaurant or food stall · salon
+and barber · phones and electronics · grocery and fresh produce · hardware and
+building supplies · fundi and repairs · photo, video and design · fitness,
+tutoring and coaching · a bit of everything.
+
+Sign up as a salon and you land on four services (wash and blow-dry, box braids,
+gel manicure, haircut) and two retail lines, with the Stock screen showing a
+Services tab and a Stock tab and nothing else. None of it is locked: everything
+is editable, and the trade only decides where you start.
+
+**Most businesses sell both.** A salon sells hours in a chair and hair food over
+the counter; a phone shop sells handsets and fixes screens. So there is one
+"add something you sell" flow, and its first question is which of the two this
+is — because everything after that differs. A thing has a cost and a count; work
+has a duration and a place in the diary.
+
 ## When what you sell is your time
 
 Not every business sells a thing. A salon sells two hours of a stylist; a tailor
 sells an alteration; a photographer sells a Saturday. Three things about that are
 genuinely different, and each one needed building rather than relabelling.
 
-**What a job costs is mostly somebody's time.** A 45-minute hem with 10 minutes
-of turnaround is 55 minutes of a tailor at what that hour actually costs the
-business, plus the thread it uses. Sellers leave the labour out — it is their own
-hands, so it feels free — and then cannot work out why a full diary leaves them
-no better off. In the seeded books that is exactly what the custom dress does:
-priced at KES 7,800, it costs KES 2,860 in hours and KES 5,677 in fabric, and
-loses KES 737 every single time. The CFO says so, with the arithmetic.
+**Your own hour is not a cost.** Most of these businesses are one person who
+does everything — cuts the cloth, posts the photo, answers the DM, delivers it.
+Charging that person's own hour against a job as an expense says their own profit
+is a cost, which is how an agency thinks about billable staff and is simply wrong
+for a sole trader. So an owner's time is never deducted. It is counted as hours
+spent, and what those hours *earn* is the question:
+
+> Personal styling hour · 1.0h · nothing bought in · **leaves KES 3,000** ·
+> KES 3,000/hr (your own hours)
+
+An employee's hour is different — that really is money leaving — so it is
+deducted, and the two are kept apart rather than averaged.
+
+**Time is the lever, not price.** Customers know the going rate and will walk, so
+the thing a sole trader actually controls is how long a job takes. But "you could
+do 43 of these a week" is arithmetic nobody believes, because nobody spends a
+week on one job. So the saving is grounded in what they actually did:
+
+> You did 9 of these in the last 30 days. Taking 15 minutes off each would have
+> given back 2.3 hours — 3 more jobs, about KES 586, without charging anyone a
+> shilling more.
 
 **The scarce thing is hours, not shelf space.** Stock keeps; an unbooked Tuesday
 does not. So the Diary leads with capacity — how many hours the team is on for,
-how many are spoken for, and what the empty ones would have earned at what the
-work usually clears. It also compares services by profit *per hour* rather than
-by price, because both jobs fill the same diary: a KES 3,000 styling hour clears
-KES 2,400 an hour and a KES 800 hem clears KES 213, and an hour given to one is
-an hour taken from the other.
+how many are spoken for, and what the empty ones would have earned. Work is
+compared by what it *leaves per hour* rather than by price, because both jobs
+fill the same diary: a KES 3,000 styling hour leaves KES 3,000 an hour and a
+KES 800 hem leaves KES 213, and an hour given to one is an hour taken from the
+other. The dearest job on the list is not always the best use of a morning.
 
 **A booking is still an order.** It has a customer, a price, payments and a place
 in the ledger, so it is modelled as one — with a time, a person and a deposit
@@ -302,6 +340,39 @@ treatment for a joint cost across outputs of unequal worth. Grade A carries 779
 per piece, Grade B 390, Grade C 142, and every grade shows the same 65% margin,
 which is the honest answer: they all came out of the same bale. An even split is
 still offered, because when a carton holds 48 identical jars it is the right one.
+
+## Talking to it, in the language you actually speak
+
+Typing a product into a form on a phone, standing in a shop, is why catalogues
+stay empty. Saying it takes three seconds. So capture — of a transaction, of a
+new product, of a new service — starts with the microphone, and typing is the
+same path entered a different way rather than a fallback.
+
+Nobody trades in one language here. A seller will say *"nimepokea elfu tatu na
+mia tano kutoka kwa Grace"* in the same breath as "she paid three five", and the
+money has its own vocabulary belonging to neither: **ngiri** is a thousand,
+**soo** a hundred, **mbao** twenty, **finje** fifty. So `lib/swahili.ts` parses
+English, Kiswahili and Sheng from one table, and a sentence can mix all three:
+
+| Said | Read as |
+| --- | --- |
+| "Nimepokea elfu tatu na mia tano kutoka kwa Grace" | KES 3,500 · money in · Grace · Sales |
+| "Nimelipa elfu nane na mia sita kwa Gikomba Millers" | KES 8,600 · money out · Gikomba Millers · Stock |
+| "She paid ngiri tano for the dress" | KES 5,000 · money in |
+| "Ongeza huduma, kushona nguo, elfu mbili, saa moja" | A service · "Kushona nguo" · KES 2,000 · 60 minutes |
+| "Add product, hair food, mia nne hamsini, costs me mia mbili" | A product · "Hair food" · KES 450, cost KES 200 |
+
+Two details that took getting right. Swahili builds an amount the other way
+round from English — *elfu tatu* is "thousand three" — and it compounds only
+while the parts get smaller: *elfu ishirini na tano* is 25,000, but *mia nne na
+hamsini* is 450, not four-hundred-and-fiftys. And a stated duration settles what
+kind of thing is being added, because nothing you put on a shelf takes forty-five
+minutes.
+
+Recognition itself belongs to the browser, so what it hears depends on the phone.
+The parsing is ours and handles all three regardless — which means a Swahili
+sentence typed on a phone whose recognition only speaks English still comes out
+right.
 
 ## The rider, and whose money the delivery fee is
 
@@ -378,11 +449,13 @@ itself; change a grade's price and every piece in the bale recosts. Stock comes
 off when an order is marked delivered, so the count stays true without a
 separate stocktake.
 
-**A service is costed on the hours it takes, not just what it uses.** Labour is
-priced at what that person's time actually costs the business, turnaround time
-included, because the chair is occupied whether or not it is billed. A service
-with nobody assigned says out loud that it priced the time at a standard rate
-rather than quietly pretending to know.
+**A sole trader's own hour is never charged as a cost.** It is counted as time
+spent and measured by what it earns. Only an employee's hour is money leaving the
+business, and the two are never averaged together.
+
+**Voice understands three languages and says which it used.** Every reading shows
+its reasoning — the phrase it turned on, why something was filed as work rather
+than stock — so a wrong one can be corrected rather than argued with.
 
 **A delivery fee the seller never touched is not in their books.** Neither as
 revenue nor as expense. The ledger posts a rider payout only when the seller is
@@ -425,7 +498,9 @@ lib/statements.ts    statement parsing and duplicate detection
 lib/direction.ts     credit or debit, decided from words, with its reasoning
 lib/speech.ts        a spoken sentence into an amount, a party and a direction
 lib/costing.ts       recipe costing, and one cost answer per stock mode
-lib/services.ts      service costing by the hour, capacity, slots and deposits
+lib/services.ts      what work earns per hour, capacity, slots and deposits
+lib/industries.ts    eleven trades, their vocabulary and their starter catalogues
+lib/swahili.ts       English, Kiswahili and Sheng numbers, money and durations
 lib/lots.ts          bale and carton costing, allocated by sales value
 lib/serials.ts       serialised units, stock counts and warranty clocks
 lib/cfo.ts           the CFO brief

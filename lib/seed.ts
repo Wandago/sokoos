@@ -24,7 +24,7 @@ import type {
   RecipeLine,
 } from "./types";
 
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 /** ISO timestamp `days` ago at a given wall-clock time. */
 function isToday(iso: string) {
@@ -960,6 +960,7 @@ function buildDatabase(): Database {
       name: "Mercy Auma",
       phone: "0721 445 908",
       role: "Head tailor",
+      kind: "employee",
       // What an hour of her time costs the business, not what she is worth.
       hourlyCost: 520,
       workingDays: [1, 2, 3, 4, 5, 6],
@@ -972,6 +973,7 @@ function buildDatabase(): Database {
       name: "Alice Nyambura",
       phone: "0733 210 774",
       role: "Tailor and finisher",
+      kind: "employee",
       hourlyCost: 380,
       workingDays: [1, 2, 3, 4, 5],
       startHour: 9,
@@ -983,7 +985,9 @@ function buildDatabase(): Database {
       name: "Louis Wandago",
       phone: "0722 000 145",
       role: "Styling and fittings",
-      hourlyCost: 600,
+      // The owner. Her hours are the capacity of the business, not a bill it pays.
+      kind: "owner",
+      hourlyCost: 0,
       workingDays: [2, 4, 6],
       startHour: 10,
       endHour: 16,
@@ -1251,6 +1255,7 @@ function buildDatabase(): Database {
       currency: "KES",
       defaultDeliveryFee: 200,
       type: "fashion",
+      industry: "fashion",
       // The usual arrangement: the boda is paid by the customer at the door.
       defaultSettlement: "customer_pays_rider",
     },

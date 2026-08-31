@@ -18,6 +18,13 @@ interface Rule {
 }
 
 const RULES: Rule[] = [
+  /* Swahili, first because it is unambiguous where English hedges: "nimepokea"
+   * can only mean money came in, and "nimelipa" can only mean it went out. */
+  { direction: "credit", weight: 3, phrases: ["nimepokea", "nimelipwa", "amelipa", "nimeuza", "imeingia"] },
+  { direction: "debit", weight: 3, phrases: ["nimelipa", "nimenunua", "nimetumia", "imetoka", "nimempa"] },
+  { direction: "credit", weight: 2, phrases: ["mauzo", "nimepata", "malipo", "faida"] },
+  { direction: "debit", weight: 2, phrases: ["matumizi", "gharama", "deni", "kodi", "stoo"] },
+
   // Unambiguous M-Pesa and bank narration.
   { direction: "credit", weight: 3, phrases: ["you have received", "received from", "payment from", "credited", "deposit of", "has deposited"] },
   { direction: "debit", weight: 3, phrases: ["paid to", "you have sent", "sent to", "withdraw", "buy goods", "pay bill", "paybill", "purchased", "debited"] },

@@ -26,22 +26,34 @@ import { goodsTotal } from "./selectors";
  */
 
 export interface ServiceCost {
-  /** The person's time, at what that time actually costs the business. */
-  labour: number;
+  /** Hours of somebody else's time that the business actually pays for. */
+  paidLabour: number;
+  /** Hours of the owner's own time. Not a cost — the thing being spent. */
+  ownerHours: number;
   /** Thread, dye, extensions, fuel — whatever the job consumes. */
   materials: number;
   materialLines: { name: string; cost: number; qty: string }[];
-  total: number;
-  margin: number;
-  marginPercent: number;
-  /** What an hour of this job earns after its own costs — the real comparison. */
-  profitPerHour: number;
-  /** Set when the labour was priced at a default rather than a real person's. */
+  /** Money that actually leaves the business for this job. */
+  cashCost: number;
+  /** What is left after everything the business genuinely pays out. */
+  earns: number;
+  earnsPercent: number;
+  /**
+   * What an hour of the work earns after cash costs. For a sole trader this is
+   * their wage and their profit at once, and it is the only number that lets
+   * them compare a job against another job.
+   */
+  earnsPerHour: number;
+  /** The whole time the job occupies, turnaround included. */
+  hours: number;
+  /** True when nobody is assigned and the time had to be assumed. */
   assumedRate: boolean;
+  /** True when all the hours are the owner's own. */
+  ownerOnly: boolean;
 }
 
-/** A fallback so an unstaffed service still costs something honest. */
-const DEFAULT_HOURLY_COST = 400;
+/** A fallback so an unassigned service still says something honest about time. */
+const DEFAULT_DURATION_HOURS = 1;
 
 export function costService(
   service: Service,
@@ -51,11 +63,15 @@ export function costService(
   const staff = db.staff.find(
     (person) => person.id === (staffId ?? service.staffIds?.[0]),
   );
-  const hourlyCost = staff?.hourlyCost ?? DEFAULT_HOURLY_COST;
 
   // Buffer time is real time: the chair is occupied whether or not it is billed.
   const minutes = service.durationMinutes + (service.bufferMinutes ?? 0);
-  const labour = (minutes / 60) * hourlyCost;
+  const hours = minutes > 0 ? minutes / 60 : DEFAULT_DURATION_HOURS;
+
+  // An owner's hour costs the business nothing. It is what the business has.
+  const paysForTime = staff ? staff.kind === "employee" : false;
+  const paidLabour = paysForTime ? hours * (staff?.hourlyCost ?? 0) : 0;
+  const ownerHours = paysForTime ? 0 : hours;
 
   const materialLines = (service.materials ?? []).map((line) => {
     const ingredient = db.ingredients.find((i) => i.id === line.ingredientId);
@@ -68,18 +84,66 @@ export function costService(
   });
 
   const materials = materialLines.reduce((sum, line) => sum + line.cost, 0);
-  const total = labour + materials;
-  const margin = service.price - total;
+  const cashCost = paidLabour + materials;
+  const earns = service.price - cashCost;
 
   return {
-    labour,
+    paidLabour,
+    ownerHours,
     materials,
     materialLines,
-    total,
-    margin,
-    marginPercent: service.price > 0 ? (margin / service.price) * 100 : 0,
-    profitPerHour: minutes > 0 ? margin / (minutes / 60) : 0,
+    cashCost,
+    earns,
+    earnsPercent: service.price > 0 ? (earns / service.price) * 100 : 0,
+    earnsPerHour: hours > 0 ? earns / hours : 0,
+    hours,
     assumedRate: !staff,
+    ownerOnly: ownerHours > 0 && paidLabour === 0,
+  };
+}
+
+/**
+ * What being quicker is worth.
+ *
+ * The lever a sole trader actually controls is not price — customers know the
+ * going rate and will walk — it is time. But "you could do 43 of these a week"
+ * is arithmetic nobody believes, because nobody spends a week doing one job.
+ * So this is grounded in what they actually did: how many of this job came
+ * through in the last month, what shaving a few minutes off each would have
+ * given back, and what that freed time is worth at what their work earns.
+ */
+export function fasterBy(
+  service: Service,
+  db: Database,
+  savedMinutes: number,
+  days = 30,
+) {
+  const cost = costService(service, db);
+  const cutoff = Date.now() - days * 86400000;
+
+  const done = bookings(db).filter(
+    (order) =>
+      order.booking.serviceId === service.id &&
+      order.booking.state === "done" &&
+      +new Date(order.booking.startsAt) >= cutoff,
+  ).length;
+
+  const hoursSaved = (done * savedMinutes) / 60;
+  const hoursAfter = Math.max(0.1, cost.hours - savedMinutes / 60);
+
+  return {
+    savedMinutes,
+    /** How many of this job actually came through in the window. */
+    done,
+    days,
+    hoursNow: cost.hours,
+    hoursAfter,
+    hoursSaved,
+    /** Whole extra jobs those freed hours would have fitted. */
+    extraJobs: hoursAfter > 0 ? Math.floor(hoursSaved / hoursAfter) : 0,
+    /** What those extra jobs would have left, at this job's own figure. */
+    extraEarnings: (hoursAfter > 0 ? Math.floor(hoursSaved / hoursAfter) : 0) * cost.earns,
+    earnsPerHourAfter: hoursAfter > 0 ? cost.earns / hoursAfter : 0,
   };
 }
 
@@ -88,7 +152,7 @@ export function costedServices(db: Database) {
   return db.services
     .filter((service) => service.active)
     .map((service) => ({ service, cost: costService(service, db) }))
-    .sort((a, b) => a.cost.profitPerHour - b.cost.profitPerHour);
+    .sort((a, b) => a.cost.earnsPerHour - b.cost.earnsPerHour);
 }
 
 /* ------------------------------------------------------------------ *
@@ -139,9 +203,9 @@ export interface Capacity {
   /** What the day's work will bring in, if it all happens. */
   booked_value: number;
   /**
-   * Roughly what the free hours could still earn, at the average profit per
-   * hour of what is actually being sold. An empty hour is not free — it is a
-   * cost that earned nothing.
+   * Roughly what the free hours could still earn, at the average an hour of
+   * this business's work actually earns. An empty hour is not free — it is the
+   * one thing that cannot be bought back.
    */
   idleValue: number;
 }
@@ -169,7 +233,7 @@ export function capacityOn(db: Database, day: Date): Capacity {
 
   const costed = costedServices(db);
   const averageProfitPerHour = costed.length
-    ? costed.reduce((sum, row) => sum + row.cost.profitPerHour, 0) / costed.length
+    ? costed.reduce((sum, row) => sum + row.cost.earnsPerHour, 0) / costed.length
     : 0;
   const free = Math.max(0, available - booked);
 

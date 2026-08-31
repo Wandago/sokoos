@@ -11,6 +11,7 @@ import {
   MapPin,
   Play,
   Plus,
+  Timer,
   Wallet,
 } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui/page";
@@ -29,6 +30,7 @@ import {
   bookingsOn,
   capacityOn,
   costService,
+  fasterBy,
   openSlots,
   staffLoadOn,
   unpaidDeposits,
@@ -361,6 +363,9 @@ function BookingSheet({ order, onClose }: { order: Order; onClose: () => void })
   const staff = db.staff.find((p) => p.id === booking.staffId);
   const customer = db.customers.find((c) => c.id === order.customerId);
   const cost = service ? costService(service, db, booking.staffId) : null;
+  // Twenty minutes is a realistic saving on almost any job, and the point is
+  // the week rather than the job.
+  const faster = service ? fasterBy(service, db, Math.min(20, Math.round(service.durationMinutes * 0.2))) : null;
 
   const next: { label: string; state: BookingState; icon: typeof Play } | null =
     booking.state === "enquiry"
@@ -474,37 +479,72 @@ function BookingSheet({ order, onClose }: { order: Order; onClose: () => void })
           <Card>
             <div className="p-4">
               <p className="mb-3 text-[12px] font-bold uppercase tracking-[0.06em] text-text-secondary">
-                What this job costs you
+                What this job leaves you
               </p>
               <div className="space-y-2 text-[13px]">
-                <Row
-                  label={`Time — ${service?.durationMinutes}m${service?.bufferMinutes ? ` + ${service.bufferMinutes}m turnaround` : ""}`}
-                  value={money(cost.labour)}
-                />
+                <Row label="They pay" value={money(goodsTotal(order))} />
                 {cost.materialLines.map((line) => (
-                  <Row key={line.name} label={`${line.name} — ${line.qty}`} value={money(line.cost)} />
+                  <Row key={line.name} label={`${line.name} — ${line.qty}`} value={`− ${money(line.cost)}`} />
                 ))}
+                {cost.paidLabour > 0 && (
+                  <Row
+                    label={`${staff?.name?.split(" ")[0] ?? "Their"} time — ${cost.hours.toFixed(1)}h`}
+                    value={`− ${money(cost.paidLabour)}`}
+                  />
+                )}
                 <div className="flex items-baseline justify-between gap-3 border-t border-border-subtle pt-2.5">
-                  <span className="text-[14px] font-semibold">Costs you</span>
-                  <span className="tabular text-[15px] font-extrabold">{money(cost.total)}</span>
+                  <span className="text-[14px] font-semibold">You keep</span>
+                  <span
+                    className={cn(
+                      "tabular text-[15px] font-extrabold",
+                      cost.earns >= 0 ? "text-success-text" : "text-danger",
+                    )}
+                  >
+                    {money(cost.earns)}
+                  </span>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-text-secondary">You keep</span>
+                  <span className="text-text-secondary">
+                    For {cost.hours.toFixed(1)} hours{cost.ownerOnly ? " of your own time" : ""}
+                  </span>
                   <span
                     className={cn(
                       "tabular font-bold",
-                      cost.margin >= 0 ? "text-success-text" : "text-danger",
+                      cost.earnsPerHour >= 0 ? "text-success-text" : "text-danger",
                     )}
                   >
-                    {money(cost.margin)} · {money(cost.profitPerHour)}/hr
+                    {money(cost.earnsPerHour)}/hr
                   </span>
                 </div>
               </div>
+
+              {cost.ownerOnly && (
+                <p className="mt-3 rounded-xl bg-surface-sunken px-3 py-2 text-[11px] leading-relaxed text-text-muted">
+                  Your own hours are not counted as a cost — they are what you have to sell. The
+                  {" "}{money(cost.earnsPerHour)} an hour is your pay and your profit together.
+                </p>
+              )}
+
+              {/* Price is set by what the market bears. Time is the lever. */}
+              {faster && faster.extraJobs > 0 && (
+                <p className="mt-3 flex gap-2 rounded-xl bg-ai-soft px-3 py-2.5 text-[12px] leading-relaxed text-ai-text">
+                  <Timer className="size-4 shrink-0" />
+                  <span>
+                    You did {faster.done} of these in the last {faster.days} days. Taking{" "}
+                    {faster.savedMinutes} minutes off each would have given back{" "}
+                    {faster.hoursSaved.toFixed(1)} hours —{" "}
+                    <strong className="font-semibold">
+                      {faster.extraJobs} more {faster.extraJobs === 1 ? "job" : "jobs"}
+                    </strong>
+                    , about {money(faster.extraEarnings)}, without charging anyone a shilling more.
+                  </span>
+                </p>
+              )}
+
               {cost.assumedRate && (
                 <p className="mt-3 flex gap-2 rounded-xl bg-surface-sunken px-3 py-2 text-[11px] leading-relaxed text-text-muted">
                   <CircleAlert className="size-3.5 shrink-0" />
-                  Nobody is assigned, so the time is priced at a standard rate. Assign someone for
-                  the real figure.
+                  Nobody is assigned yet, so this assumes you are doing it yourself.
                 </p>
               )}
             </div>

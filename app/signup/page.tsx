@@ -9,6 +9,7 @@ import { Hydrated } from "@/components/ui/hydrated";
 import { Field, Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { useStore, slugify } from "@/lib/store";
+import { industries } from "@/lib/industries";
 import { cn } from "@/lib/cn";
 
 export default function SignUpPage() {
@@ -31,6 +32,7 @@ function SignUpScreen() {
   const { signUp, updateStorefront } = useStore();
   const router = useRouter();
   const [step, setStep] = useState<Step>("you");
+  const [industryId, setIndustryId] = useState("fashion");
   const [reveal, setReveal] = useState(false);
   const [error, setError] = useState("");
 
@@ -61,7 +63,7 @@ function SignUpScreen() {
     }
     // Creating the account also creates the mini site — one is not useful
     // without the other.
-    signUp({ name, email, phone, businessName, tillNumber: till, location });
+    signUp({ name, email, phone, businessName, tillNumber: till, location, industryId });
     if (tagline.trim()) updateStorefront({ tagline: tagline.trim() });
     try {
       window.localStorage.setItem("sokoos.onboarded", "1");
@@ -213,6 +215,39 @@ function SignUpScreen() {
             <Field label="Where you sell from">
               <Input value={location} onChange={(e) => setLocation(e.target.value)} />
             </Field>
+
+            {/* The trade decides how stock is counted and what the first screen
+                holds. A blank Products page is where these apps die. */}
+            <div>
+              <p className="mb-2 text-[13px] font-semibold text-text-secondary">
+                What trade is this?
+              </p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {industries.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setIndustryId(option.id)}
+                    aria-pressed={industryId === option.id}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-2xl border p-3 text-left transition-colors",
+                      industryId === option.id
+                        ? "border-brand bg-brand-soft"
+                        : "border-border bg-surface hover:bg-surface-hover",
+                    )}
+                  >
+                    <span className="text-[20px]">{option.emoji}</span>
+                    <span className="min-w-0 text-[12px] font-semibold leading-tight">
+                      {option.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2.5 text-[12px] leading-relaxed text-text-muted">
+                {industries.find((i) => i.id === industryId)?.blurb} You can change this and add
+                anything you like — it only decides where you start.
+              </p>
+            </div>
           </>
         )}
 

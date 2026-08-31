@@ -294,7 +294,21 @@ export interface StaffMember {
   name: string;
   phone: string;
   role: string;
-  /** What an hour of this person's time costs the business. */
+  /**
+   * Whether this person's hours are money leaving the business.
+   *
+   * Most businesses here are one person who does everything — cuts the cloth,
+   * posts the photo, answers the DM, delivers it. Charging that person's own
+   * hour against a job as a cost would say their own profit is an expense,
+   * which is how an agency thinks about billable staff and is simply wrong for
+   * a sole trader. An owner's time is not a cost. It is the whole capacity of
+   * the business, and what it earns is the question worth asking.
+   */
+  kind: "owner" | "employee";
+  /**
+   * What an hour of this person's time costs the business. Zero for an owner —
+   * they are paid out of what is left, not before it.
+   */
   hourlyCost: number;
   /** Days worked, 0 = Sunday, and the hours they are on. */
   workingDays: number[];
@@ -522,6 +536,8 @@ export interface Business {
   defaultDeliveryFee: number;
   /** What trade this is, which decides how stock is tracked and what is shown. */
   type?: BusinessType;
+  /** The specific trade, finer than the type — "salon" rather than "beauty". */
+  industry?: string;
   /** The arrangement this business normally has with its riders. */
   defaultSettlement?: DeliverySettlement;
 }

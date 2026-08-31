@@ -5,7 +5,7 @@
  * never needs the network at all.
  */
 
-const VERSION = "sokoos-v7";
+const VERSION = "sokoos-v8";
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 

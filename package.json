@@ -7,8 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check": "npx tsx scripts/dedupe-check.ts && npx tsx scripts/speech-check.ts && npx tsx scripts/swahili-check.ts && npx tsx scripts/desc-check.ts && npx tsx scripts/stock-check.ts && npx tsx scripts/services-check.ts && npx tsx scripts/delivery-check.ts && npx tsx scripts/cfo-check.ts",
-    "typecheck": "tsc --noEmit"
+    "check": "npx tsx scripts/dedupe-check.ts && npx tsx scripts/speech-check.ts && npx tsx scripts/swahili-check.ts && npx tsx scripts/desc-check.ts && npx tsx scripts/stock-check.ts && npx tsx scripts/services-check.ts && npx tsx scripts/delivery-check.ts && npx tsx scripts/sync-check.ts && npx tsx scripts/cfo-check.ts",
+    "typecheck": "tsc --noEmit",
+    "e2e:sync": "npx tsx scripts/e2e-sync.ts"
   },
   "dependencies": {
     "lucide-react": "^1.37.0",

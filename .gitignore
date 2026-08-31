@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# The API workspace has its own dependencies.
+/server/node_modules
+/server/.env.local

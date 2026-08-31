@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useSyncExternalStore }
 import { createSeedDatabase, DB_VERSION } from "./seed";
 import { ingredientDraw, toBaseQty } from "./costing";
 import { industryFor } from "./industries";
+import { recordChange } from "./sync/client";
 import { categorise } from "./statements";
 import { riderOwed, sellerReceives, settlementOf } from "./selectors";
 import type {
@@ -71,6 +72,21 @@ function persist(db: Database) {
 function setDb(update: Database | ((previous: Database) => Database)) {
   const previous = getSnapshot();
   const next = typeof update === "function" ? update(previous) : update;
+  if (next === previous) return;
+  clientSnapshot = next;
+  persist(next);
+  /* Every mutation in the app funnels through here, so this is the one place
+   * that needs to know about sync. What changed is queued for the server and
+   * delivered when there is signal; with no API configured it does nothing at
+   * all and the app behaves exactly as it always has. */
+  recordChange(previous, next);
+  listeners.forEach((listener) => listener());
+}
+
+/** Applies records pulled from another device. Bypasses the outbox, since
+ *  echoing the server's own changes back to it would loop forever. */
+export function applyRemote(next: Database) {
+  const previous = getSnapshot();
   if (next === previous) return;
   clientSnapshot = next;
   persist(next);

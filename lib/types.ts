@@ -398,6 +398,13 @@ export interface Payment {
   source: "manual" | "capture" | "mpesa";
   /** AI confidence when the payment came in via Smart Capture. */
   confidence?: number;
+  /**
+   * Why the match was suggested, in the seller's words. The evidence for an
+   * M-Pesa match — the account reference a customer typed, the number they paid
+   * from — only exists on the server, so the reasoning travels with the record
+   * rather than being guessed at again on the phone.
+   */
+  matchReasons?: string[];
 }
 
 export interface Rider {

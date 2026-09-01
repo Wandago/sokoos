@@ -113,6 +113,7 @@ export async function tillStatus(tenantId: string, baseUrl: string) {
   if (!account) return null;
 
   return {
+    connected: true,
     kind: account.kind,
     shortcode: account.shortcode,
     environment: account.environment,
@@ -397,7 +398,7 @@ export async function handleConfirmation(
     receivedAt,
     matched: settles,
     source: "mpesa" as const,
-    ...(match ? { confidence: match.confidence } : {}),
+    ...(match ? { confidence: match.confidence, matchReasons: match.reasons } : {}),
   };
 
   const ops: Parameters<typeof push>[2] = [
@@ -446,6 +447,8 @@ interface Match {
   orderId: string;
   customerId?: string;
   confidence: number;
+  /** Why, in the seller's words. Every suggestion in this app shows its working. */
+  reasons: string[];
   order?: Record<string, unknown>;
 }
 
@@ -514,16 +517,28 @@ async function findOrder(
 
       if (confidence === 0) continue;
 
+      /* The reasons are written here rather than derived later, because only
+       * this loop knows which signal actually fired. A seller confirming a
+       * suggestion deserves to see the evidence, not just a number. */
+      const reasons: string[] = [];
+      if (refMatches) reasons.push("The order number was entered on M-Pesa");
+      if (phoneMatches) reasons.push("Paid from this customer's number");
+      if (amountMatches) reasons.push("Exact amount");
+
       // A payment usually follows its order within a few days; a month-old
       // order matching only on amount is more likely a coincidence.
       const age = Math.abs(+new Date(hint.receivedAt) - +new Date(String(order.createdAt ?? "")));
-      if (age > 30 * 86_400_000) confidence -= 0.15;
+      if (age > 30 * 86_400_000) {
+        confidence -= 0.15;
+        reasons.push("But this order is over a month old");
+      }
 
       if (!best || confidence > best.confidence) {
         best = {
           orderId: row.id,
           customerId: order.customerId as string | undefined,
           confidence: Math.round(confidence * 100) / 100,
+          reasons,
           order,
         };
       }

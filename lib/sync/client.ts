@@ -137,7 +137,7 @@ export function pendingCount() {
  * Talking to the server
  * ------------------------------------------------------------------ */
 
-async function call<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+export async function call<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const response = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
@@ -241,17 +241,27 @@ export async function syncOnce(
     }
 
     let cursor = getState().cursor;
-    for (let page = 0; page < 50; page++) {
+    /* Each page is applied on top of the last, not on top of the database this
+     * run started with. Re-deriving from `db` every time looked harmless and
+     * silently threw away every page but the final one: a device signing in to
+     * an account with a year of records would pull thousands and keep the last
+     * few. Anything that arrived early — an M-Pesa payment, say — vanished. */
+    let working = db;
+    for (let page = 0; page < 200; page++) {
       const result = await call<{ cursor: number; records: PulledRecord[]; more: boolean }>(
         `/tenants/${session.tenantId}/sync?since=${cursor}`,
         {},
         session.token,
       );
       if (result.records.length) {
-        applyToStore(applyPulled(db, result.records));
+        working = applyPulled(working, result.records);
+        applyToStore(working);
         pulled += result.records.length;
       }
       cursor = result.cursor;
+      /* The cursor is written after every page, so a pull cut off halfway by a
+       * dropped connection resumes where it stopped instead of starting over. */
+      setState({ cursor });
       if (!result.more) break;
     }
 

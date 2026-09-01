@@ -115,6 +115,12 @@ rejection is recoverable rather than lost.
 primitive the statement importer already uses — so a callback delivered twice
 cannot post income twice.
 
+**A match explains itself.** The payment written into the sync stream carries
+`matchReasons` alongside its confidence — "The order number was entered on
+M-Pesa", "Paid from this customer's number" — because those signals exist only
+here, and a seller confirming a suggestion should see the evidence rather than a
+number.
+
 **Matching is cautious on purpose.** An incoming payment is scored against open
 orders on the account reference, the paying phone and the amount, matched
 against what the *seller receives* rather than what the customer paid (with an

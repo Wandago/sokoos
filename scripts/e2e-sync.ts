@@ -181,6 +181,61 @@ async function main() {
   check("the mini site is public", publicView.business.slug === shop.slug);
   console.log(` /store/${shop.slug} serves ${publicView.products.length} products to anyone`);
 
+  /* ---------------------------------------------------------------- *
+   * Device three, driven by the real loop
+   *
+   * The two devices above pull with this script's own helper, which
+   * accumulates pages before applying them. `syncOnce` is what actually runs
+   * in the app, and it used to apply each page on top of the database the run
+   * started with — so a shop with more than one page of history kept only the
+   * last page and quietly lost the rest. Nothing above would have noticed.
+   * ---------------------------------------------------------------- */
+  {
+    // A browser, as far as the sync client is concerned.
+    const store = new Map<string, string>();
+    const shim = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    (globalThis as { window?: unknown }).window = { localStorage: shim };
+
+    shim.setItem(
+      "sokoos.sync.session",
+      JSON.stringify({
+        token: session.token,
+        accountId: session.accountId ?? "",
+        tenantId: shop.id,
+        tenantName: shop.name,
+        slug: shop.slug,
+      }),
+    );
+    // Already seeded, so this device pulls rather than re-uploading a seed.
+    shim.setItem("sokoos.sync.state", JSON.stringify({ cursor: 0, seeded: true }));
+
+    process.env.NEXT_PUBLIC_API_URL = API;
+    const { syncOnce } = await import("../lib/sync/client");
+
+    let landed = createSeedDatabase();
+    landed = { ...landed, orders: [], products: [], payments: [], ledger: [] };
+    const outcome = await syncOnce(landed, (next) => {
+      landed = next;
+    });
+
+    check("the loop reports no error", outcome.status === "idle", outcome);
+    expect(
+      "every page survives, not just the last",
+      landed.orders.length,
+      deviceTwo.orders.length,
+    );
+    check(
+      "a record from the first page is still there",
+      landed.products.length === settled.products.length,
+      { got: landed.products.length, want: settled.products.length },
+    );
+    console.log(` the loop pulled ${outcome.pulled} records across pages`);
+  }
+
   const summary = await call(`/tenants/${shop.id}/summary`, {}, session.token);
   console.log("\n stored on the server:", Object.entries(summary).map(([k, v]) => `${k} ${v}`).join(", "));
 

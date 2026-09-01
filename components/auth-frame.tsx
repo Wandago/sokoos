@@ -75,9 +75,11 @@ export function AuthFrame({
 }
 
 /**
- * Passwords are collected, checked for shape, and dropped. This build has no
- * backend to verify one against, and keeping it locally would put a secret in
- * localStorage in exchange for nothing.
+ * Passwords are collected, checked for shape, and dropped. Nothing verifies one:
+ * on a device on its own there is nothing to verify against, and where the API
+ * is configured, signing in is a phone number and a code, so a password would
+ * be a secret kept for no reason. Keeping it in localStorage would put one on
+ * disk in the clear in exchange for nothing.
  */
 export const PASSWORD_NOTE =
-  "This build has no server, so your password is never stored — the account lives on this device.";
+  "Your password is never stored — not on this device, and not on any server.";

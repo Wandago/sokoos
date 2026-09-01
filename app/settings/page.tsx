@@ -22,6 +22,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { ConfirmSheet } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { TillCard } from "@/components/mpesa/till-card";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
 import { industries, industryFor } from "@/lib/industries";
@@ -224,6 +225,9 @@ function SettingsScreen() {
           </Button>
         </div>
       </Card>
+
+      <SectionTitle>M-Pesa</SectionTitle>
+      <TillCard tillNumber={db.business.tillNumber} />
 
       <SectionTitle>Appearance</SectionTitle>
       <Card className="mb-5 p-3">

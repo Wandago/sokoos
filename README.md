@@ -488,6 +488,12 @@ Nothing on screen ever waits for a network call, which is why the app works on a
 matatu. Records carry the time they were changed, so the newest write wins and a
 week offline resolves without asking anybody to choose.
 
+The loop runs when the app opens, when the seller comes back to it, when the
+network returns, and slowly in between — the moments that matter on a phone that
+spends its day locked in a pocket. A pill in the header says which of those
+just happened, because "is my morning's work saved anywhere" deserves a straight
+answer rather than a spinner.
+
 **Sign-in is a phone number and a code.** No password anywhere — the codes are
 hashed at rest, so are session tokens, and a code is consumed the first time it
 is used. Postgres row-level security scopes every tenant's rows in the database
@@ -508,6 +514,12 @@ post income twice. Matching is deliberately timid: only a decisive match settles
 an order, a weaker one becomes a suggestion the seller confirms, and two open
 orders for the same amount produce no suggestion at all. A wrong match hides
 money under the wrong customer, which is worse than no match.
+
+**A suggestion arrives with its evidence.** The signals that place a payment —
+the order number typed at the till, the number it was paid from — exist only on
+the server, so the reasoning travels with the record instead of being guessed at
+again on the phone. The match screen ranks the till's suggestion first, marks it
+*From your till*, and prints the reason next to it. The seller still decides.
 
 ## Stack
 

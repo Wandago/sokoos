@@ -380,6 +380,18 @@ async function main() {
   ok("it reaches the seller's device as a payment", Boolean(payment));
   eq("carrying the M-Pesa code as its reference", (payment!.doc as Doc).reference, "TFA4K21LMN");
   eq("and the right amount", (payment!.doc as Doc).amount, 2200);
+
+  /* A number on its own is not an explanation. The evidence for an M-Pesa match
+   * exists only here — the reference the customer typed, the number they paid
+   * from — so it travels with the record to the seller's screen. */
+  const why = (payment!.doc as Doc).matchReasons as string[];
+  ok("the match says why, not just how sure", Array.isArray(why) && why.length > 0, why);
+  ok(
+    "naming the reference the customer typed",
+    why.some((r) => r.includes("order number")),
+    why,
+  );
+  ok("and the amount that agreed", why.includes("Exact amount"), why);
   const settled = afterPayment.records.find((r) => r.kind === "order" && r.id === "ord_9001");
   eq("a confident match settles the order", (settled!.doc as Doc).paymentStatus, "paid");
 

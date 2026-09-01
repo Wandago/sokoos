@@ -12,6 +12,7 @@ import { Sheet } from "./ui/sheet";
 import { Avatar } from "./ui/avatar";
 import { InstallPrompt } from "./install-prompt";
 import { SokoMark } from "./soko-mark";
+import { SyncStatus } from "./sync-status";
 
 function useBadges() {
   const { db } = useStore();
@@ -125,6 +126,9 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               <Avatar name={db.business.owner} className="size-10 ring-2 ring-white/20" />
             </Link>
           </div>
+          {/* Renders nothing — and starts nothing — on a device that has never
+              signed in, which is the ordinary case. */}
+          <SyncStatus tone="panel" className="mt-2.5" />
         </header>
 
         <main className="content-sheet relative -mt-6 min-h-[60vh] flex-1 bg-bg px-4 pb-32 pt-5 lg:mt-0 lg:rounded-none lg:px-8 lg:pb-12 lg:pt-8">

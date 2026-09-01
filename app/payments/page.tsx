@@ -211,7 +211,12 @@ function PaymentCard({ payment, onMatch }: { payment: Payment; onMatch: () => vo
       {payment.confidence !== undefined && (
         <div className="mt-2.5 flex items-center gap-2 border-t border-border-subtle pt-2.5">
           <Sparkles className="size-3.5 text-ai" />
-          <span className="text-[11px] font-medium text-text-secondary">AI read this</span>
+          {/* Nothing was read off a photograph here — Safaricom said so. The
+              confidence is about which order it belongs to, not whether the
+              money arrived, and the label has to keep those apart. */}
+          <span className="text-[11px] font-medium text-text-secondary">
+            {payment.source === "mpesa" ? "Came from your till" : "AI read this"}
+          </span>
           <ConfidenceMeter value={payment.confidence} className="ml-auto" />
         </div>
       )}
@@ -226,9 +231,18 @@ function PaymentCard({ payment, onMatch }: { payment: Payment; onMatch: () => vo
   );
 }
 
-/** Ranks open orders by how close they are to the payment. Always explainable. */
+/**
+ * Ranks open orders by how close they are to the payment. Always explainable.
+ *
+ * A payment that came in through M-Pesa may already carry a suggestion made on
+ * the server, and that one wins outright — not because the server is cleverer,
+ * but because it saw evidence this screen cannot: the account reference the
+ * customer typed at the till, and the number they paid from. Re-scoring here
+ * from amount and time alone would quietly throw that away and rank a
+ * coincidence above a fact.
+ */
 function suggestions(payment: Payment, orders: ReturnType<typeof useStore>["db"]["orders"]) {
-  return orders
+  const ranked = orders
     .filter((o) => o.paymentStatus !== "paid" && o.status !== "cancelled")
     .map((order) => {
       const total = sellerReceives(order);
@@ -236,16 +250,29 @@ function suggestions(payment: Payment, orders: ReturnType<typeof useStore>["db"]
       const customerMatch = payment.customerId && payment.customerId === order.customerId ? 1 : 0;
       const hours = Math.abs(+new Date(payment.receivedAt) - +new Date(order.createdAt)) / 3600000;
       const timeMatch = Math.max(0, 1 - hours / 72);
-      const score = amountMatch * 0.55 + customerMatch * 0.3 + timeMatch * 0.15;
       const reasons: string[] = [];
+      let score = amountMatch * 0.55 + customerMatch * 0.3 + timeMatch * 0.15;
       if (Math.abs(total - payment.amount) < 1) reasons.push("Exact amount");
       else if (amountMatch > 0.9) reasons.push("Amount is close");
       if (customerMatch) reasons.push("Same customer");
       if (timeMatch > 0.7) reasons.push("Around the same time");
-      return { order, score, total, reasons };
+
+      const fromTill = order.id === payment.suggestedOrderId;
+      if (fromTill) {
+        score = Math.max(score, payment.confidence ?? 0.85);
+        // The server's own words, kept rather than paraphrased.
+        reasons.unshift(...(payment.matchReasons ?? ["M-Pesa pointed at this order"]));
+      }
+      return { order, score, total, reasons, fromTill };
     })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .sort((a, b) => b.score - a.score);
+
+  /* The till's suggestion is never ranked off the end of the list, even if the
+   * local scoring disagrees with it. */
+  const suggested = ranked.find((r) => r.fromTill);
+  const top = ranked.slice(0, 5);
+  if (suggested && !top.includes(suggested)) return [suggested, ...top.slice(0, 4)];
+  return top;
 }
 
 function MatchSheet({ payment, onClose }: { payment: Payment; onClose: () => void }) {
@@ -276,7 +303,7 @@ function MatchSheet({ payment, onClose }: { payment: Payment; onClose: () => voi
       }
     >
       <div className="space-y-2.5 pb-4">
-        {ranked.map(({ order, score, total, reasons }, index) => {
+        {ranked.map(({ order, score, total, reasons, fromTill }, index) => {
           const customer = customerOf(db, order);
           return (
             <button
@@ -298,11 +325,19 @@ function MatchSheet({ payment, onClose }: { payment: Payment; onClose: () => voi
                 <p className="tabular shrink-0 text-[15px] font-bold">{money(total)}</p>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {index === 0 && score > 0.7 && (
+                {fromTill ? (
                   <Badge tone="ai">
                     <Sparkles className="size-3" />
-                    Suggested match
+                    From your till
                   </Badge>
+                ) : (
+                  index === 0 &&
+                  score > 0.7 && (
+                    <Badge tone="ai">
+                      <Sparkles className="size-3" />
+                      Suggested match
+                    </Badge>
+                  )
                 )}
                 {reasons.map((reason) => (
                   <Badge key={reason}>{reason}</Badge>

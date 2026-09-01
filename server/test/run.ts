@@ -10,10 +10,12 @@
  */
 import { randomUUID } from "node:crypto";
 import { app } from "../src/index.js";
-import { closePool, pool, query } from "../src/db/pool.js";
+import { closePool, query } from "../src/db/pool.js";
 import { migrate } from "../src/db/migrate.js";
 import { normalisePhone, InvalidPhone, maskPhone } from "../src/lib/phone.js";
 import { pull, push } from "../src/lib/sync.js";
+import { encrypt, decrypt, resetKeyCache, maskSecret } from "../src/lib/crypto.js";
+import { handleConfirmation } from "../src/lib/mpesa.js";
 
 let failures = 0;
 let checks = 0;
@@ -35,12 +37,18 @@ function section(name: string) {
   console.log(`\n\x1b[1m${name}\x1b[0m`);
 }
 
+/** What a JSON document looks like before anything has checked it. */
+type Doc = Record<string, unknown>;
+
 /** Calls the app the way a browser would, so routing and middleware are covered. */
 async function api(
   method: string,
   path: string,
   body?: unknown,
   token?: string,
+  // The response body is whatever the route decided to send; the assertions
+  // below are what check it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ status: number; body: any }> {
   const res = await app.fetch(
     new Request(`http://test${path}`, {
@@ -72,7 +80,7 @@ async function signIn(phone: string, name?: string) {
 async function reset() {
   await migrate(() => {});
   // Order matters only to be readable; the cascades would handle it.
-  await query("truncate applied_batches, records, tenant_cursors, memberships, sessions, login_codes, accounts, tenants, admin_audit restart identity cascade");
+  await query("truncate mpesa_events, mpesa_accounts, applied_batches, records, tenant_cursors, memberships, sessions, login_codes, accounts, tenants, admin_audit restart identity cascade");
 }
 
 async function main() {
@@ -181,7 +189,7 @@ async function main() {
   eq("nor write to them", brianWrites.status, 404);
 
   const stillThere = await api("GET", `/tenants/${aminaShop.body.id}/sync?since=0`, undefined, amina.token);
-  const order = stillThere.body.records.find((r: any) => r.id === "ord_1");
+  const order = stillThere.body.records.find((r: { id: string }) => r.id === "ord_1");
   eq("and Amina's order is untouched", order.doc.total, 2200);
 
   // The database itself must refuse, not just the route. This is the check that
@@ -218,7 +226,7 @@ async function main() {
 
   const after = await pull(shop, 0);
   const product = after.records.find((r) => r.id === "prd_1");
-  eq("the newer value survived", (product!.doc as any).name, "Box braids");
+  eq("the newer value survived", (product!.doc as Doc).name, "Box braids");
   ok("and the cursor did not burn a number on the stale op", older.cursor === newer.cursor, {
     stale: older.cursor,
     newer: newer.cursor,
@@ -277,7 +285,7 @@ async function main() {
 
   const published = await api("GET", "/store/amina-beauty-bar");
   eq("a published shop is readable with no sign-in", published.status, 200);
-  const names = published.body.products.map((p: any) => p.name);
+  const names = published.body.products.map((p: { name: string }) => p.name);
   ok("hidden products are not served", !names.includes("Not for the site"), names);
   ok("nor inactive ones", !names.includes("Retired"), names);
   ok("but the real ones are", names.includes("Box braids"), names);
@@ -285,6 +293,151 @@ async function main() {
 
   const missing = await api("GET", "/store/no-such-shop");
   eq("an address nobody owns is a 404", missing.status, 404);
+
+  /* ---------------------------------------------------------------- */
+  section("A seller's credentials, encrypted");
+
+  const plain = "Xk9vQm2pLr7TzAeB4NwYs6Hd";
+  const sealed = encrypt(plain);
+  ok("the ciphertext is not the secret", !sealed.includes(plain));
+  eq("and it decrypts back", decrypt(sealed), plain);
+  ok("the same secret encrypts differently each time", encrypt(plain) !== encrypt(plain));
+
+  // Tampering must fail loudly rather than decrypt to something else.
+  const parts = sealed.split(".");
+  const tampered = [parts[0], parts[1], parts[2], Buffer.from("nonsense").toString("base64")].join(".");
+  ok("a tampered value will not decrypt", (() => {
+    try { decrypt(tampered); return false; } catch { return true; }
+  })());
+
+  // And the key is what protects it, not the format.
+  const realKey = process.env.ENCRYPTION_KEY;
+  process.env.ENCRYPTION_KEY = Buffer.from("a-completely-different-key-32byte").toString("base64");
+  resetKeyCache();
+  ok("a different key cannot read it", (() => {
+    try { decrypt(sealed); return false; } catch { return true; }
+  })());
+  process.env.ENCRYPTION_KEY = realKey;
+  resetKeyCache();
+  eq("and the right key still can", decrypt(sealed), plain);
+  eq("masking shows enough to recognise, not to use", maskSecret(plain), "Xk9v••••4NwYs6Hd".slice(0, 4) + "••••" + plain.slice(-4));
+
+  /* ---------------------------------------------------------------- */
+  section("M-Pesa — the seller's own till, read not held");
+
+  const till = await api("POST", `/tenants/${shop}/mpesa`, {
+    kind: "till",
+    shortcode: "174379",
+    consumerKey: "seller-consumer-key",
+    consumerSecret: "seller-consumer-secret",
+    passkey: "seller-passkey",
+    environment: "sandbox",
+  }, amina.token);
+  eq("a till is connected", till.status, 201);
+  ok("and a callback address is issued", typeof till.body.confirmationUrl === "string" && till.body.confirmationUrl.includes("/mpesa/c2b/"));
+  eq("the consumer key comes back masked", till.body.consumerKey, "sell••••-key");
+
+  // The credentials must never leave the server, not even to their owner.
+  const status = await api("GET", `/tenants/${shop}/mpesa`, undefined, amina.token);
+  const asText = JSON.stringify(status.body);
+  ok("no secret is ever returned", !asText.includes("seller-consumer-secret") && !asText.includes("seller-passkey"));
+
+  const storedTill = await query<{ consumer_secret_enc: string }>("select consumer_secret_enc from mpesa_accounts limit 1");
+  ok("nor stored in the clear", !storedTill.rows[0]!.consumer_secret_enc.includes("seller-consumer-secret"));
+
+  const secret = String(till.body.confirmationUrl).split("/mpesa/c2b/")[1]!.split("/")[0]!;
+
+  // An order waiting to be paid, with the customer's phone on file.
+  await push(shop, randomUUID(), [
+    { kind: "customer", id: "cus_grace", doc: { id: "cus_grace", name: "Grace Wairimu", phone: "0722418903" }, updatedAt: "2026-08-31T07:00:00.000Z" },
+    {
+      kind: "order", id: "ord_9001",
+      doc: {
+        id: "ord_9001", code: "#9001", customerId: "cus_grace",
+        items: [{ productId: "p", name: "Dress", qty: 1, price: 2200 }],
+        deliveryFee: 200, deliverySettlement: "customer_pays_rider",
+        discount: 0, status: "confirmed", paymentStatus: "unpaid",
+        createdAt: "2026-08-31T07:00:00.000Z",
+      },
+      updatedAt: "2026-08-31T07:00:00.000Z",
+    },
+  ]);
+
+  const cursorBefore = (await api("GET", `/tenants/${shop}/cursor`, undefined, amina.token)).body.cursor;
+
+  const paid = await handleConfirmation(secret, {
+    TransactionType: "Pay Bill", TransID: "TFA4K21LMN", TransTime: "20260831142530",
+    TransAmount: "2200", BusinessShortCode: "174379", BillRefNumber: "#9001",
+    MSISDN: "254722418903", FirstName: "GRACE", LastName: "WAIRIMU",
+  });
+  eq("a payment posts", paid.status, "posted");
+  eq("and is matched to the order", paid.matchedOrder, "ord_9001");
+  ok("with high confidence, since the reference and amount both agree", (paid.confidence ?? 0) >= 0.95, paid.confidence);
+
+  // The seller's phone learns about it through the ordinary sync stream.
+  const afterPayment = await pull(shop, cursorBefore);
+  const payment = afterPayment.records.find((r) => r.kind === "payment");
+  ok("it reaches the seller's device as a payment", Boolean(payment));
+  eq("carrying the M-Pesa code as its reference", (payment!.doc as Doc).reference, "TFA4K21LMN");
+  eq("and the right amount", (payment!.doc as Doc).amount, 2200);
+  const settled = afterPayment.records.find((r) => r.kind === "order" && r.id === "ord_9001");
+  eq("a confident match settles the order", (settled!.doc as Doc).paymentStatus, "paid");
+
+  // The delivery fee was the customer's business, not the seller's — matching
+  // against 2,400 would have missed the order entirely.
+  eq("matched on what the seller receives, not what the customer paid", (payment!.doc as Doc).amount, 2200);
+
+  // Safaricom retries. It must not pay twice.
+  const replayed = await handleConfirmation(secret, {
+    TransID: "TFA4K21LMN", TransTime: "20260831142530", TransAmount: "2200",
+    BusinessShortCode: "174379", BillRefNumber: "#9001", MSISDN: "254722418903", FirstName: "GRACE",
+  });
+  eq("a repeated callback is recognised", replayed.status, "duplicate");
+  const events = await query<{ n: number }>("select count(*)::int as n from mpesa_events where trans_id = 'TFA4K21LMN'");
+  eq("and only one event is on record", events.rows[0]!.n, 1);
+
+  // A leaked URL alone must not let anyone invent income.
+  const wrongCode = await handleConfirmation(secret, {
+    TransID: "ZZZ111", TransAmount: "50000", BusinessShortCode: "999999", MSISDN: "254700000000",
+  });
+  eq("a payload for another shortcode is refused", wrongCode.status, "rejected");
+  const unknown = await handleConfirmation("not-a-real-secret", { TransID: "ZZZ222", TransAmount: "100" });
+  eq("and an unknown callback address is refused", unknown.status, "rejected");
+
+  // Two open orders for the same amount cannot be told apart.
+  await push(shop, randomUUID(), [
+    { kind: "order", id: "ord_twin_a", doc: { id: "ord_twin_a", code: "#8001", items: [{ price: 1500, qty: 1 }], deliveryFee: 0, discount: 0, status: "confirmed", paymentStatus: "unpaid", createdAt: "2026-08-31T07:00:00.000Z" }, updatedAt: "2026-08-31T07:00:00.000Z" },
+    { kind: "order", id: "ord_twin_b", doc: { id: "ord_twin_b", code: "#8002", items: [{ price: 1500, qty: 1 }], deliveryFee: 0, discount: 0, status: "confirmed", paymentStatus: "unpaid", createdAt: "2026-08-31T07:00:00.000Z" }, updatedAt: "2026-08-31T07:00:00.000Z" },
+  ]);
+  const ambiguous = await handleConfirmation(secret, {
+    TransID: "TFB7M09PQR", TransTime: "20260831150000", TransAmount: "1500",
+    BusinessShortCode: "174379", BillRefNumber: "", MSISDN: "254733222111", FirstName: "UNKNOWN",
+  });
+  eq("an ambiguous payment still posts", ambiguous.status, "posted");
+  ok("but is not auto-matched", ambiguous.matchedOrder === undefined, ambiguous);
+
+  const stillUnpaid = await pull(shop, 0);
+  const twinA = stillUnpaid.records.find((r) => r.id === "ord_twin_a");
+  eq("so neither order is wrongly settled", (twinA!.doc as Doc).paymentStatus, "unpaid");
+
+  const unmatched = await api("GET", `/tenants/${shop}/mpesa/unmatched`, undefined, amina.token);
+  ok("and it is listed for a human to sort out", unmatched.body.some((e: { trans_id: string }) => e.trans_id === "TFB7M09PQR"));
+
+  // Another business must not be able to see any of this.
+  const nosy = await api("GET", `/tenants/${shop}/mpesa`, undefined, brian.token);
+  eq("another seller cannot read the till", nosy.status, 404);
+
+  // The HTTP route always answers 0, or Safaricom retries forever.
+  const viaHttp = await api("POST", `/mpesa/c2b/${secret}/confirmation`, {
+    TransID: "TFC2N88STU", TransTime: "20260831160000", TransAmount: "4200",
+    BusinessShortCode: "174379", MSISDN: "254710552187", FirstName: "BRIAN",
+  });
+  eq("the callback endpoint accepts", viaHttp.status, 200);
+  eq("and tells Safaricom it is done", viaHttp.body.ResultCode, 0);
+  const junk = await api("POST", `/mpesa/c2b/${secret}/confirmation`, { nothing: "useful" });
+  eq("even for a payload it cannot use", junk.body.ResultCode, 0);
+  const validation = await api("POST", `/mpesa/c2b/${secret}/validation`, { TransID: "X" });
+  eq("validation never blocks a customer's payment", validation.body.ResultCode, 0);
 
   /* ---------------------------------------------------------------- */
   section("Sessions end");

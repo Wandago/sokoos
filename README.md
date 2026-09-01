@@ -80,10 +80,10 @@ figure in there describes a real business.
 
 ## Accounts, and what "sign in" means here
 
-This build has no server, so an account is a **local profile**: signing up writes
-your name, email and phone to this device and nothing leaves it. The forms are
-real — validation, multi-step, the lot — and when a backend exists they post to
-it unchanged.
+With no API address configured the app runs alone, and an account is a **local
+profile**: signing up writes your name, email and phone to this device and
+nothing leaves it. Point `NEXT_PUBLIC_API_URL` at the API in `server/` and the
+same screens sign in for real against it — the forms did not change.
 
 **No password is ever stored.** Sign-up asks for one, checks its shape, and
 drops it. Keeping it in `localStorage` would put a secret on disk in the clear
@@ -132,8 +132,9 @@ npm run check   # the money logic, checked without a browser — see scripts/REA
 ```
 
 `npm run build` produces a fully static site in `out/` — 34 routes, each a real
-`index.html`. There is no server, no database and no serverless function
-anywhere in it.
+`index.html`. Nothing in it needs a server: no database call, no serverless
+function, no build-time API. The API in `server/` is something the app can be
+pointed at, never something it depends on.
 
 ## Deploying it
 
@@ -474,10 +475,47 @@ possible in a static, local-first app, and a mock inbox pretending otherwise
 would be worse than its absence. The Inbox screen models conversations from
 those channels, and says plainly that they are entered rather than synced.
 
+## The server, and why the money does not go through it
+
+`server/` holds an optional API — Node, Hono and Postgres — that gives a seller
+their records on more than one device. The app does not need it. With
+`NEXT_PUBLIC_API_URL` unset every sync function is a no-op and nothing about the
+build changes; see `server/README.md` for the protocol.
+
+**The phone still writes first.** Every screen saves to the device and carries
+on; the change is queued in a durable outbox and delivered when there is signal.
+Nothing on screen ever waits for a network call, which is why the app works on a
+matatu. Records carry the time they were changed, so the newest write wins and a
+week offline resolves without asking anybody to choose.
+
+**Sign-in is a phone number and a code.** No password anywhere — the codes are
+hashed at rest, so are session tokens, and a code is consumed the first time it
+is used. Postgres row-level security scopes every tenant's rows in the database
+itself, not only in the queries above it.
+
+**M-Pesa is read, never held.** A seller connects their *own* Paybill or Till.
+The customer pays that shortcode directly, the money lands in the seller's
+account instantly, and SokoOS is only told that it happened. This is the point:
+holding other people's money in Kenya makes you a payment service provider under
+Central Bank licensing — a different company, with capital requirements and an
+audit regime. Reading a till keeps this a bookkeeping tool and keeps the float
+at zero.
+
+The seller's Daraja credentials are encrypted before they touch a column and no
+endpoint ever returns them. Payments are deduped on the M-Pesa receipt code, the
+same primitive the statement importer uses, so a callback delivered twice cannot
+post income twice. Matching is deliberately timid: only a decisive match settles
+an order, a weaker one becomes a suggestion the seller confirms, and two open
+orders for the same amount produce no suggestion at all. A wrong match hides
+money under the wrong customer, which is worse than no match.
+
 ## Stack
 
 Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS v4
-· lucide-react. No backend, no chart library, no UI kit.
+· lucide-react. No chart library, no UI kit.
+
+The API in `server/` is Node · Hono · `pg` against Postgres 16, with no ORM. It
+is optional: the app is built to work without it and does.
 
 ## Layout
 

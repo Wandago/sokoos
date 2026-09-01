@@ -10,12 +10,22 @@ import {
   createTenant,
   requestCode,
   signOut,
-  tenantsFor,
   verifyCode,
   type Caller,
 } from "./lib/auth.js";
 import { InvalidPhone } from "./lib/phone.js";
 import { TooManyOps, cursorFor, pull, push, summary } from "./lib/sync.js";
+import {
+  DarajaError,
+  NoMpesaAccount,
+  connectTill,
+  handleConfirmation,
+  registerCallbacks,
+  requestPayment,
+  tillStatus,
+  unmatchedEvents,
+} from "./lib/mpesa.js";
+import { MissingKey } from "./lib/crypto.js";
 
 /**
  * The API.
@@ -48,6 +58,12 @@ app.onError((error, c) => {
   if (error instanceof TooManyRequests) return c.json({ error: error.message }, 429);
   if (error instanceof BadCode) return c.json({ error: error.message }, 401);
   if (error instanceof TooManyOps) return c.json({ error: error.message }, 413);
+  if (error instanceof NoMpesaAccount) return c.json({ error: error.message }, 404);
+  if (error instanceof DarajaError) return c.json({ error: error.message }, 502);
+  if (error instanceof MissingKey) {
+    console.error(error.message);
+    return c.json({ error: "Payments are not configured on this server." }, 503);
+  }
   console.error(error);
   return c.json({ error: "Something went wrong on our side." }, 500);
 });
@@ -66,6 +82,10 @@ const PUBLIC_PATHS = [
   /^\/auth\/verify$/,
   // The mini site is read by customers who have never signed in.
   /^\/store\/[^/]+$/,
+  /* Safaricom's servers call these and cannot hold a session. The secret in
+   * the URL is what identifies the seller, and the payload's shortcode is
+   * checked against that seller's own before anything is written. */
+  /^\/mpesa\/c2b\/[^/]+\/(confirmation|validation)$/,
 ];
 
 app.use("*", async (c, next) => {
@@ -175,11 +195,119 @@ tenantScoped.post("/sync", async (c) => {
   return c.json(result);
 });
 
+/* ------------------------------------------------------------------ *
+ * The seller's own till
+ * ------------------------------------------------------------------ */
+
+/** Where Safaricom should call back. Behind a proxy the host header is the truth. */
+function publicBase(c: { req: { url: string; header: (name: string) => string | undefined } }) {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/$/, "");
+  const forwarded = c.req.header("x-forwarded-host");
+  const proto = c.req.header("x-forwarded-proto") ?? "https";
+  if (forwarded) return `${proto}://${forwarded}`;
+  const url = new URL(c.req.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+tenantScoped.get("/mpesa", async (c) =>
+  c.json((await tillStatus(c.get("tenantId"), publicBase(c))) ?? { connected: false }),
+);
+
+tenantScoped.post("/mpesa", async (c) => {
+  const body = await c.req.json<{
+    kind?: "paybill" | "till";
+    shortcode?: string;
+    consumerKey?: string;
+    consumerSecret?: string;
+    passkey?: string;
+    environment?: "sandbox" | "production";
+  }>();
+
+  if (!body.shortcode?.trim() || !body.consumerKey?.trim() || !body.consumerSecret?.trim()) {
+    return c.json({ error: "The shortcode, consumer key and secret are all needed." }, 400);
+  }
+
+  await connectTill(c.get("tenantId"), {
+    kind: body.kind ?? "till",
+    shortcode: body.shortcode,
+    consumerKey: body.consumerKey,
+    consumerSecret: body.consumerSecret,
+    passkey: body.passkey,
+    environment: body.environment ?? "sandbox",
+  });
+
+  // Never echo credentials back, not even the ones just sent.
+  return c.json(await tillStatus(c.get("tenantId"), publicBase(c)), 201);
+});
+
+tenantScoped.post("/mpesa/register", async (c) =>
+  c.json(await registerCallbacks(c.get("tenantId"), publicBase(c))),
+);
+
+tenantScoped.post("/mpesa/request", async (c) => {
+  const body = await c.req.json<{ phone?: string; amount?: number; reference?: string }>();
+  if (!body.phone || !body.amount || !body.reference) {
+    return c.json({ error: "A phone number, an amount and an order reference are needed." }, 400);
+  }
+  return c.json(
+    await requestPayment(c.get("tenantId"), {
+      phone: body.phone,
+      amount: body.amount,
+      reference: body.reference,
+    }),
+  );
+});
+
+tenantScoped.get("/mpesa/unmatched", async (c) => c.json(await unmatchedEvents(c.get("tenantId"))));
+
 tenantScoped.get("/cursor", async (c) => c.json({ cursor: await cursorFor(c.get("tenantId")) }));
 tenantScoped.get("/summary", async (c) => c.json(await summary(c.get("tenantId"))));
 
 authed.route("/tenants/:tenantId", tenantScoped);
 app.route("/", authed);
+
+/* ------------------------------------------------------------------ *
+ * Safaricom's callbacks
+ * ------------------------------------------------------------------ */
+
+/**
+ * Validation. Safaricom asks whether to accept a payment before taking it.
+ *
+ * This always accepts. Refusing would mean a customer standing at a counter is
+ * told their payment failed because our service was slow — the seller's money
+ * should arrive whatever is wrong on our side, and anything we could not
+ * understand is recoverable from the statement importer later.
+ */
+app.post("/mpesa/c2b/:secret/validation", async (c) =>
+  c.json({ ResultCode: 0, ResultDesc: "Accepted" }),
+);
+
+/**
+ * Confirmation. The money has already reached the seller's till; this is only
+ * being told about it.
+ *
+ * Always answers 0, even when the payload is rejected. A non-zero result makes
+ * Safaricom retry, and a payload we will never understand would then be retried
+ * forever. What actually happened is recorded in `mpesa_events` either way.
+ */
+app.post("/mpesa/c2b/:secret/confirmation", async (c) => {
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = await c.req.json();
+  } catch {
+    payload = {};
+  }
+
+  const result = await handleConfirmation(c.req.param("secret"), payload).catch((error) => {
+    console.error("[mpesa] confirmation failed", error);
+    return { status: "rejected" as const, reason: "Internal error." };
+  });
+
+  if (result.status !== "posted") {
+    console.warn(`[mpesa] ${result.status}${result.reason ? `: ${result.reason}` : ""}`);
+  }
+  return c.json({ ResultCode: 0, ResultDesc: "Accepted" });
+});
 
 /* ------------------------------------------------------------------ *
  * The public mini site

@@ -379,6 +379,12 @@ export interface Order {
 export interface Payment {
   id: string;
   orderId?: string;
+  /**
+   * An order this payment probably belongs to, when the evidence was not strong
+   * enough to say so outright. A lead for the seller to confirm — never treated
+   * as settled, because a wrong match hides money under the wrong customer.
+   */
+  suggestedOrderId?: string;
   customerId?: string;
   customerName: string;
   method: PaymentMethod;

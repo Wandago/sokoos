@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createSeedDatabase } from "../lib/seed";
-import { applyPulled, diffOps, snapshotOps } from "../lib/sync/records";
+import { applyPulled, diffOps, snapshotOps, type PulledRecord } from "../lib/sync/records";
 import type { Database } from "../lib/types";
 
 const API = process.env.API_URL ?? "http://127.0.0.1:8787";
@@ -54,7 +54,7 @@ async function pushAll(tenantId: string, token: string, ops: unknown[], device: 
 }
 
 async function pullAll(tenantId: string, token: string, since = 0) {
-  const all: any[] = [];
+  const all: PulledRecord[] = [];
   let cursor = since;
   for (let page = 0; page < 50; page++) {
     const r = await call(`/tenants/${tenantId}/sync?since=${cursor}`, {}, token);

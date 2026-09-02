@@ -1,0 +1,119 @@
+name: CI
+
+# Runs the checks that already exist, on every push. Nothing new is asserted
+# here — the value is that the 286 client assertions and 90 server checks stop
+# being something a person has to remember to run.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  app:
+    name: App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # The money logic, checked without a browser.
+      - run: npm run check
+      # A build failure here is a broken deploy, so it is part of the gate.
+      - run: npm run build
+
+  api:
+    name: API
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Pinned to the version the migrations were written against: row-level
+        # security and `on conflict … where` behave differently elsewhere, and
+        # this suite exists precisely to catch that.
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sokoos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+        working-directory: server
+      - run: npm run typecheck
+        working-directory: server
+      - run: npm test
+        working-directory: server
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/sokoos
+          NODE_ENV: test
+          # A throwaway key: the suite proves credentials round-trip and that a
+          # wrong key cannot read them, neither of which needs a real secret.
+          ENCRYPTION_KEY: dGVzdC1vbmx5LWtleS1ub3QtYS1zZWNyZXQtMDAwMDA=
+
+  deployable:
+    name: Container starts on an empty database
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sokoos_fresh
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t sokoos-api server
+
+      # The failure this guards against is a deploy that comes up against a
+      # fresh database with no tables, or one missing a variable nobody checked
+      # until the first payment. Both have to be caught here rather than in
+      # production, so the image is actually run.
+      - name: Refuses to start when misconfigured
+        run: |
+          if docker run --rm -e NODE_ENV=production sokoos-api; then
+            echo "::error::the API started without configuration; it must not"
+            exit 1
+          fi
+          echo "correctly refused to start"
+
+      - name: Migrates an empty database and answers its health check
+        run: |
+          docker run -d --name api --network host \
+            -e NODE_ENV=production \
+            -e DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/sokoos_fresh \
+            -e ENCRYPTION_KEY=dGVzdC1vbmx5LWtleS1ub3QtYS1zZWNyZXQtMDAwMDA= \
+            -e PUBLIC_URL=https://api.example.com \
+            -e ALLOWED_ORIGINS=https://app.example.com \
+            sokoos-api
+
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8787/health | grep -q '"ok":true'; then
+              echo "healthy after ${i}s"
+              docker logs api
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::the API never became healthy"
+          docker logs api
+          exit 1

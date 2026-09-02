@@ -141,6 +141,42 @@ build does not have.
 than authorization. The `admin_audit` table exists, ready, and is not yet
 written to.
 
+## Deploying it
+
+The image builds from this directory and runs on any host that takes a
+container. Everything it needs is in the environment; see `.env.example`.
+
+```bash
+docker build -t sokoos-api server
+docker run -p 8787:8787 \
+  -e DATABASE_URL=... \
+  -e ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+  -e PUBLIC_URL=https://api.sokoos.app \
+  -e ALLOWED_ORIGINS=https://sokoos.app \
+  -e NODE_ENV=production \
+  sokoos-api
+```
+
+**Migrations run on boot.** Not as a separate deploy step, because the two
+cannot be allowed to drift: a container running code that expects a column its
+database does not have is a worse failure than a slightly slower start. An
+empty database becomes a working one on the first launch.
+
+**A misconfigured server refuses to start.** Every required setting is read on
+the way up and a missing one stops the process with a message saying what to do
+about it. The failure this prevents is the expensive one: a deploy that comes
+up, passes its health check, accepts sign-ins, and then throws the first time
+somebody's customer pays — because nothing looked at `ENCRYPTION_KEY` until a
+seller's credentials needed decrypting. A server that will not start is a line
+in a deploy log; a server that starts broken is a shopkeeper at a counter
+losing a sale.
+
+CI builds the image and runs it against an empty Postgres on every push, so
+both of those stay true.
+
+**Before anyone else uses it:** wire `SMS_WEBHOOK_URL` to an aggregator.
+Without it, login codes go to the log only, and nobody can sign in.
+
 ## Configuration
 
 | Variable | Meaning |
@@ -148,7 +184,7 @@ written to.
 | `DATABASE_URL` | Postgres connection string. Required. |
 | `PORT` | Defaults to 8787. |
 | `ALLOWED_ORIGINS` | Comma-separated. The static front end is always cross-origin. |
-| `SMS_WEBHOOK_URL` | Where login codes are posted. Logged if unset. |
+| `SMS_WEBHOOK_URL` | Where login codes are posted. Logged if unset — which means nobody can sign in. |
 | `ENCRYPTION_KEY` | Base64 32 bytes, for sellers' M-Pesa credentials. `openssl rand -base64 32`. |
 | `PUBLIC_URL` | This API's public address, used to build callback URLs for Daraja. |
 | `NODE_ENV` | `production` stops login codes being returned in the response. |

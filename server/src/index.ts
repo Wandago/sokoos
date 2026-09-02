@@ -27,6 +27,8 @@ import {
   unmatchedEvents,
 } from "./lib/mpesa.js";
 import { MissingKey } from "./lib/crypto.js";
+import { migrate } from "./db/migrate.js";
+import { readConfig } from "./config.js";
 
 /**
  * The API.
@@ -45,8 +47,11 @@ const app = new Hono<Env>();
 app.use(
   "*",
   cors({
-    // The static front end is deployed separately, so it is always cross-origin.
-    origin: (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000").split(","),
+    /* The static front end is deployed separately, so it is always
+     * cross-origin. Read straight from the environment because the middleware
+     * is registered before main() runs; readConfig has already checked in
+     * production that this was set deliberately. */
+    origin: (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000").split(",").map((o) => o.trim()),
     allowHeaders: ["content-type", "authorization"],
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
     credentials: false,
@@ -373,12 +378,45 @@ app.get("/store/:slug", async (c) => {
   });
 });
 
-const port = Number(process.env.PORT ?? 8787);
+/* ------------------------------------------------------------------ *
+ * Starting up
+ * ------------------------------------------------------------------ */
+
+/**
+ * Boot, in the order that fails cheapest first.
+ *
+ * Config before database before migrations before listening. A missing
+ * environment variable should cost a second and a clear message; it should not
+ * cost a deploy that comes up, passes its health check, and breaks on the first
+ * payment because nothing looked at ENCRYPTION_KEY until a seller's credentials
+ * needed decrypting.
+ *
+ * Migrations run here rather than as a separate deploy step because the two
+ * cannot be allowed to drift: a container running code that expects a column
+ * its database does not have is a worse failure than a slightly slower start.
+ */
+async function main() {
+  const config = readConfig();
+
+  // Fails immediately and loudly if the database is unreachable, rather than
+  // on whichever request happens to arrive first.
+  await pool.query("select 1");
+
+  await migrate((line) => console.log(`[migrate] ${line}`));
+
+  serve({ fetch: app.fetch, port: config.port }, (info) => {
+    console.log(`SokoOS API on port ${info.port}`);
+    if (config.publicUrl) console.log(`Callbacks will be built from ${config.publicUrl}`);
+  });
+}
 
 if (process.env.NODE_ENV !== "test") {
-  serve({ fetch: app.fetch, port }, (info) =>
-    console.log(`SokoOS API on http://localhost:${info.port}`),
-  );
+  main().catch((error) => {
+    // The message is the product here: whoever reads this is configuring a
+    // deploy and needs to know what to change, not where it threw.
+    console.error(`\n${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  });
 }
 
 export { app };

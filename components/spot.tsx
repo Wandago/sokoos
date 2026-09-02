@@ -14,6 +14,14 @@ interface Palette {
   ink: string;
   /** The filled accent that carries the eye. */
   accent: string;
+  /**
+   * A second accent, warmer than the first.
+   *
+   * One colour makes a drawing read as a diagram; two make it read as an
+   * illustration. It is used sparingly — a bag, a coin, a bubble — so the
+   * card still belongs to the brand rather than becoming a rainbow.
+   */
+  pop: string;
   /** Interior panels — screens, pages, wheels. */
   paper: string;
   /** The ground ellipse. */
@@ -26,6 +34,7 @@ const palettes: Record<SpotSurface, Palette> = {
   forest: {
     ink: "#EFF3E2",
     accent: "var(--lime-500)",
+    pop: "var(--amber-500)",
     paper: "var(--forest-900)",
     shadow: "#EFF3E2",
     shadowOpacity: 0.14,
@@ -35,6 +44,7 @@ const palettes: Record<SpotSurface, Palette> = {
   lime: {
     ink: "var(--forest-950)",
     accent: "#ffffff",
+    pop: "var(--amber-500)",
     paper: "#EAF6C7",
     shadow: "var(--forest-950)",
     shadowOpacity: 0.16,
@@ -42,6 +52,7 @@ const palettes: Record<SpotSurface, Palette> = {
   cream: {
     ink: "var(--forest-950)",
     accent: "var(--lime-500)",
+    pop: "var(--amber-500)",
     paper: "#ffffff",
     shadow: "var(--forest-950)",
     shadowOpacity: 0.1,
@@ -49,6 +60,7 @@ const palettes: Record<SpotSurface, Palette> = {
   paper: {
     ink: "var(--forest-950)",
     accent: "var(--lime-500)",
+    pop: "var(--amber-500)",
     paper: "#ffffff",
     shadow: "var(--forest-950)",
     shadowOpacity: 0.1,
@@ -62,15 +74,17 @@ interface SpotProps {
   /** Per-part overrides, for the rare case a card needs its own mix. */
   ink?: string;
   accent?: string;
+  pop?: string;
   paper?: string;
 }
 
-function resolve({ surface = "paper", ink, accent, paper }: SpotProps): Palette {
+function resolve({ surface = "paper", ink, accent, paper, pop }: SpotProps): Palette {
   const base = palettes[surface];
   return {
     ...base,
     ink: ink ?? base.ink,
     accent: accent ?? base.accent,
+    pop: pop ?? base.pop,
     paper: paper ?? base.paper,
   };
 }
@@ -306,6 +320,143 @@ export function SpotAllInOne(props: SpotProps) {
       <path d="M156 66 h16 M164 58 v16" stroke={c.ink} strokeWidth="5" strokeLinecap="round" />
       <rect x="146" y="124" width="42" height="38" rx="8" fill={c.paper} stroke={c.ink} strokeWidth="5" />
       <path d="M167 124 v38 M146 143 h42" stroke={c.ink} strokeWidth="4" />
+    </Frame>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * The second set
+ *
+ * Drawn after the receipt work, in a slightly warmer register than the first
+ * five: two accents rather than one, rounder shapes, and a bit of character in
+ * each — a tick, a smile, a coin mid-air. The construction is identical, so
+ * they mix with the originals on the same card without looking borrowed.
+ * ------------------------------------------------------------------ */
+
+/** A receipt with the code that makes it worth keeping. */
+export function SpotReceipt(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
+  return (
+    <Frame className={className} label="A receipt carrying its transaction code" offsetY={-4}>
+      <ellipse cx="100" cy="182" rx="52" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
+      {/* The paper, with a torn foot — the shape everyone recognises. */}
+      <path
+        d="M52 26 h96 a6 6 0 0 1 6 6 v128 l-12 -8 -12 8 -12 -8 -12 8 -12 -8 -12 8 -12 -8 -12 8 V32 a6 6 0 0 1 6 -6 z"
+        fill={c.paper}
+        stroke={c.ink}
+        strokeWidth="5"
+        strokeLinejoin="round"
+      />
+      {/* The code block: the one thing on a receipt worth setting large. */}
+      <rect x="66" y="44" width="68" height="26" rx="7" fill={c.accent} stroke={c.ink} strokeWidth="4" />
+      <path d="M76 57 h12 M94 57 h10 M110 57 h14" stroke={c.ink} strokeWidth="4" strokeLinecap="round" />
+      <path d="M68 88 h44 M68 104 h64 M68 120 h34" stroke={c.ink} strokeWidth="4.5" strokeLinecap="round" opacity="0.5" />
+      <rect x="100" y="112" width="32" height="14" rx="7" fill={c.pop} stroke={c.ink} strokeWidth="3.5" />
+      {/* Checked, by somebody who could check it. */}
+      <circle cx="146" cy="140" r="26" fill={c.accent} stroke={c.ink} strokeWidth="5" />
+      <path d="M134 140 l8 9 16 -18" stroke={c.ink} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Frame>
+  );
+}
+
+/** A phone paying a till, and the money going straight past us. */
+export function SpotTill(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
+  return (
+    <Frame className={className} label="A customer paying a till directly" offsetY={-2}>
+      <ellipse cx="100" cy="180" rx="62" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
+      {/* The phone in the customer's hand. */}
+      <rect x="14" y="52" width="62" height="106" rx="15" fill={c.ink} />
+      <rect x="21" y="62" width="48" height="82" rx="8" fill={c.paper} />
+      <rect x="28" y="72" width="34" height="9" rx="4.5" fill={c.ink} opacity="0.2" />
+      <rect x="28" y="88" width="24" height="9" rx="4.5" fill={c.ink} opacity="0.2" />
+      <rect x="28" y="108" width="34" height="18" rx="9" fill={c.accent} stroke={c.ink} strokeWidth="3" />
+      {/* The till it goes to — the seller's own, not ours. */}
+      <rect x="120" y="66" width="66" height="80" rx="12" fill={c.accent} stroke={c.ink} strokeWidth="5" />
+      <rect x="132" y="80" width="42" height="26" rx="6" fill={c.paper} stroke={c.ink} strokeWidth="4" />
+      <path d="M140 92 h10 M158 92 h8" stroke={c.ink} strokeWidth="4" strokeLinecap="round" />
+      <circle cx="140" cy="124" r="6" fill={c.ink} />
+      <circle cx="158" cy="124" r="6" fill={c.ink} />
+      {/* Coins in the air between them: the money never lands anywhere else. */}
+      <circle cx="92" cy="48" r="14" fill={c.pop} stroke={c.ink} strokeWidth="4.5" />
+      <circle cx="92" cy="48" r="6" fill="none" stroke={c.ink} strokeWidth="3" />
+      <circle cx="120" cy="34" r="9" fill={c.pop} stroke={c.ink} strokeWidth="4" />
+      <circle cx="120" cy="34" r="3.5" fill="none" stroke={c.ink} strokeWidth="2.5" />
+    </Frame>
+  );
+}
+
+/** Speaking a sale, in whichever language comes out. */
+export function SpotVoice(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
+  return (
+    <Frame className={className} label="Logging a sale by speaking to the phone" offsetY={-4}>
+      <ellipse cx="100" cy="180" rx="54" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
+      {/* The mic. */}
+      <rect x="80" y="34" width="40" height="72" rx="20" fill={c.accent} stroke={c.ink} strokeWidth="5" />
+      <path d="M64 88 a36 36 0 0 0 72 0" stroke={c.ink} strokeWidth="5.5" strokeLinecap="round" fill="none" />
+      <path d="M100 124 v22" stroke={c.ink} strokeWidth="5.5" strokeLinecap="round" />
+      <path d="M80 150 h40" stroke={c.ink} strokeWidth="5.5" strokeLinecap="round" />
+      {/* Sound, both sides: the two languages it listens for. */}
+      <path d="M46 58 a30 30 0 0 0 0 40" stroke={c.ink} strokeWidth="5" strokeLinecap="round" fill="none" />
+      <path d="M28 46 a48 48 0 0 0 0 64" stroke={c.pop} strokeWidth="5" strokeLinecap="round" fill="none" />
+      <path d="M154 58 a30 30 0 0 1 0 40" stroke={c.ink} strokeWidth="5" strokeLinecap="round" fill="none" />
+      <path d="M172 46 a48 48 0 0 1 0 64" stroke={c.pop} strokeWidth="5" strokeLinecap="round" fill="none" />
+    </Frame>
+  );
+}
+
+/** The mini site, open to anybody with the link. */
+export function SpotShopfront(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
+  return (
+    <Frame className={className} label="A mini site with the seller's products" offsetY={-6}>
+      <ellipse cx="100" cy="180" rx="60" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
+      {/* The awning — the one shape that says "shop" without a word. */}
+      <path d="M30 60 h140 l-10 -28 h-120 z" fill={c.pop} stroke={c.ink} strokeWidth="5" strokeLinejoin="round" />
+      <path d="M58 32 l-4 28 M86 32 l-2 28 M114 32 l2 28 M142 32 l4 28" stroke={c.ink} strokeWidth="4" />
+      <rect x="36" y="60" width="128" height="106" rx="12" fill={c.paper} stroke={c.ink} strokeWidth="5" />
+      {/* Three things for sale. */}
+      <rect x="50" y="76" width="32" height="32" rx="8" fill={c.accent} stroke={c.ink} strokeWidth="4" />
+      <rect x="90" y="76" width="32" height="32" rx="8" fill={c.accent} stroke={c.ink} strokeWidth="4" />
+      <rect x="130" y="76" width="20" height="32" rx="8" fill={c.accent} stroke={c.ink} strokeWidth="4" opacity="0.55" />
+      <path d="M50 126 h68 M50 142 h44" stroke={c.ink} strokeWidth="5" strokeLinecap="round" opacity="0.35" />
+    </Frame>
+  );
+}
+
+/** A bale, and what comes out of it. */
+export function SpotBale(props: SpotProps) {
+  const c = resolve(props);
+  const { className } = props;
+  return (
+    <Frame className={className} label="A bale opened and priced by grade" offsetY={-2}>
+      <ellipse cx="100" cy="178" rx="58" ry="8" fill={c.shadow} opacity={c.shadowOpacity} />
+
+      {/* Folded cloth spilling over the top, so the bundle below reads as
+          clothes rather than as a crate. */}
+      <path d="M56 92 q10 -22 30 -18 q18 4 14 20 z" fill={c.paper} stroke={c.ink} strokeWidth="4.5" strokeLinejoin="round" />
+      <path d="M104 92 q8 -30 30 -24 q20 6 14 26 z" fill={c.pop} stroke={c.ink} strokeWidth="4.5" strokeLinejoin="round" />
+
+      {/* The bale itself: squat, softly bulging at the sides from being
+          compressed, and held by two straps. The straps are the tell. */}
+      <path
+        d="M50 92 h100 q10 0 10 12 v48 q0 12 -12 12 H52 q-12 0 -12 -12 v-48 q0 -12 10 -12 z"
+        fill={c.accent}
+        stroke={c.ink}
+        strokeWidth="5"
+        strokeLinejoin="round"
+      />
+      <path d="M74 92 v72 M126 92 v72" stroke={c.ink} strokeWidth="6" />
+      <path d="M42 122 h116" stroke={c.ink} strokeWidth="6" />
+
+      {/* The label a mtumba bale arrives with — grade and weight. */}
+      <rect x="84" y="132" width="32" height="20" rx="5" fill={c.paper} stroke={c.ink} strokeWidth="4" />
+      <path d="M92 142 h16" stroke={c.ink} strokeWidth="3.5" strokeLinecap="round" />
     </Frame>
   );
 }

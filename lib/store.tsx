@@ -150,6 +150,35 @@ export interface NewOrderInput {
   note?: string;
 }
 
+/**
+ * A sale across a counter.
+ *
+ * Deliberately not the same shape as `NewOrderInput`. A counter sale has no
+ * address, no rider and no waiting: the goods are in the customer's hand before
+ * the screen has finished animating. Modelling it as a delivery order with the
+ * delivery bits left blank would mean every screen downstream has to keep
+ * asking "but is this one actually a delivery?".
+ */
+export interface CounterSaleInput {
+  items: OrderItem[];
+  /** A regular worth keeping on the books. Most counter sales have nobody. */
+  customerId?: string;
+  /** What to call the payer on the receipt when there is no customer record. */
+  customerName?: string;
+  discount: number;
+  /**
+   * Absent when the goods left without being paid for.
+   *
+   * That happens in real shops — a neighbour, a regular, the end of a long
+   * day — and the app has to be able to hold the debt. Forcing a payment here
+   * would push sellers into typing a cash sale that never happened, which is
+   * the one number nobody can afford to have wrong.
+   */
+  payment?: { method: PaymentMethod; amount: number; reference?: string };
+  /** For serialised stock: exactly which units left the shop. */
+  serialIds?: string[];
+}
+
 export interface NewBookingInput {
   customerId: string;
   serviceId: string;
@@ -180,6 +209,7 @@ interface StoreValue {
   createOrder: (input: NewOrderInput) => Order;
   setOrderStatus: (orderId: string, status: OrderStatus) => void;
   assignRider: (orderId: string, riderId: string) => void;
+  sellAtCounter: (input: CounterSaleInput) => { order: Order; payment?: Payment };
   recordPayment: (input: {
     orderId?: string;
     customerId?: string;
@@ -413,6 +443,138 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       };
     });
   }, []);
+
+  /**
+   * Selling across a counter.
+   *
+   * Everything happens in one write: the order, the stock coming off, the
+   * ingredients drawn, the ledger posted, the payment taken. Doing it as four
+   * calls would be simpler to read and wrong — between them the books say the
+   * shop sold something and was never paid, and on a phone that loses signal
+   * mid-transaction that is exactly the state that would sync.
+   *
+   * The sale posts the same records as any other order, so a counter sale, an
+   * Instagram order and a delivery all land in the same book. There is no
+   * separate "POS ledger" to reconcile at the end of the month, because a
+   * second set of books is how a shop loses track of the first.
+   */
+  const sellAtCounter = useCallback<StoreValue["sellAtCounter"]>(
+    (input) => {
+      const codeNumber =
+        Math.max(
+          10510,
+          ...(db.orders
+            .map((o) => Number(o.code.replace("#", "")))
+            .filter(Number.isFinite) as number[]),
+        ) + 1;
+
+      const now = new Date().toISOString();
+      const goods =
+        input.items.reduce((sum, item) => sum + item.price * item.qty, 0) - input.discount;
+      const paid = input.payment?.amount ?? 0;
+
+      const order: Order = {
+        id: `ord_${codeNumber}`,
+        code: `#${codeNumber}`,
+        customerId: input.customerId ?? "",
+        items: input.items,
+        // No rider, no fee. Every settlement rule agrees at zero, so the sale
+        // cannot accidentally claim or owe a fare that never existed.
+        deliveryFee: 0,
+        deliverySettlement: "customer_pays_rider",
+        discount: input.discount,
+        // Handed over across the counter: delivered the moment it is rung up.
+        status: "delivered",
+        paymentStatus: paid >= goods && goods > 0 ? "paid" : paid > 0 ? "partial" : "unpaid",
+        channel: "walk-in",
+        address: "",
+        createdAt: now,
+      };
+
+      let payment: Payment | undefined;
+      if (input.payment && input.payment.amount > 0) {
+        payment = {
+          id: id("pay"),
+          orderId: order.id,
+          customerId: input.customerId,
+          customerName: input.customerName?.trim() || "Walk-in customer",
+          method: input.payment.method,
+          amount: input.payment.amount,
+          reference: input.payment.reference?.trim() ?? "",
+          state: "received",
+          receivedAt: now,
+          matched: true,
+          source: "manual",
+        };
+      }
+
+      setDb((prev) => {
+        const chosen = new Set(input.serialIds ?? []);
+
+        /* Serialised stock is counted from the units themselves, never from a
+         * number on the product — so selling a phone means marking that exact
+         * handset sold, not decrementing a tally beside it. */
+        const serials = prev.serials.map((unit) =>
+          chosen.has(unit.id)
+            ? { ...unit, status: "sold" as const, soldAt: now, orderId: order.id }
+            : unit,
+        );
+
+        const products = prev.products.map((p) => {
+          if (p.stockMode === "serial" || p.stockMode === "service") return p;
+          const line = input.items.find((it) => it.productId === p.id);
+          return line ? { ...p, stock: Math.max(0, p.stock - line.qty) } : p;
+        });
+
+        /* A mandazi sold over the counter eats the same flour as one delivered,
+         * so the stocktake moves with the till here too. */
+        const drawn = new Map<string, number>();
+        input.items.forEach((item) => {
+          const product = prev.products.find((p) => p.id === item.productId);
+          if (!product) return;
+          ingredientDraw(product, item.qty).forEach((draw) => {
+            drawn.set(draw.ingredientId, (drawn.get(draw.ingredientId) ?? 0) + draw.baseQty);
+          });
+        });
+        const ingredients = drawn.size
+          ? prev.ingredients.map((ing) =>
+              drawn.has(ing.id)
+                ? { ...ing, stock: Math.max(0, round3(ing.stock - (drawn.get(ing.id) ?? 0))) }
+                : ing,
+            )
+          : prev.ingredients;
+
+        const customer = prev.customers.find((c) => c.id === input.customerId);
+        const ledger = [...prev.ledger];
+        ledger.unshift({
+          id: id("led"),
+          date: now,
+          type: "income",
+          category: "Sales",
+          description: `Counter sale ${order.code}${customer ? ` — ${customer.name}` : ""}`,
+          amount: sellerReceives(order),
+          source: "order",
+          reference: order.code,
+          // Cash in the drawer is reconciled by definition; an unpaid hand-over
+          // is not, and the ledger should keep saying so until it is settled.
+          reconciled: order.paymentStatus === "paid",
+        });
+
+        return {
+          ...prev,
+          orders: [order, ...prev.orders],
+          payments: payment ? [payment, ...prev.payments] : prev.payments,
+          products,
+          serials,
+          ingredients,
+          ledger,
+        };
+      });
+
+      return { order, payment };
+    },
+    [db.orders],
+  );
 
   const recordPayment = useCallback<StoreValue["recordPayment"]>((input) => {
     setDb((prev) => {
@@ -1088,6 +1250,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       db,
       ready,
       createOrder,
+      sellAtCounter,
       setOrderStatus,
       assignRider,
       recordPayment,
@@ -1129,6 +1292,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       db,
       ready,
       createOrder,
+      sellAtCounter,
       setOrderStatus,
       assignRider,
       recordPayment,

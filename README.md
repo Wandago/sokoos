@@ -14,11 +14,13 @@ Discovery → Conversation → Order → Payment → Delivery → Reconciliation
 | Module | What it does |
 | --- | --- |
 | **Dashboard** | Today's takings, open orders, what needs attention, one smart insight |
+| **Till** | Selling across a counter: tap what they are buying, take cash or M-Pesa, hand over a receipt. Change is worked out for you |
 | **Orders** | The full lifecycle — new → confirmed → packed → out for delivery → delivered |
 | **Inbox** | Instagram, TikTok, WhatsApp and Facebook conversations in one place, each convertible to an order |
 | **Customers** | Order history, lifetime spend, and what each person still owes |
 | **Products** | Prices, cost, margin per item, and low-stock warnings |
 | **Payments** | M-Pesa, cash and bank payments, with suggested matches for anything unreconciled |
+| **Receipts** | Every payment that arrived can be receipted and sent on WhatsApp, carrying the M-Pesa code the customer can check against their own message |
 | **Deliveries** | Riders, zones, what is on the road, the handover moment, and cash a rider is still holding |
 | **Diary** | For work sold by the hour: what is booked, who is doing it, how much of the day is still free, and which slots are held without a deposit |
 | **Ledger** | Money in and out, with cost of goods and rider payouts posted automatically |
@@ -33,7 +35,7 @@ Plus three screens outside the app chrome:
 
 | Route | What it is |
 | --- | --- |
-| `/welcome` | The onboarding flow — six swipeable cards a first-time visitor meets before the dashboard. Replayable from Settings. |
+| `/welcome` | The tour — a deck of seven cards you scroll rather than a slideshow you advance, so it never hides how long it is. Replayable from Settings. |
 | `/landing` | The marketing page: hero with a live-styled phone mock, how it works, features, offline, three steps, pricing. |
 | `/ads` | The ad kit — twelve 9:16 story creatives, each openable at full size to screenshot into a story slot. |
 | `/login`, `/signup` | Sign in, and a three-step sign up that ends by creating the seller's mini site. |
@@ -129,6 +131,14 @@ npm run lint
 ```bash
 npm run typecheck
 npm run check   # the money logic, checked without a browser — see scripts/README.md
+```
+
+Colour contrast is audited in a real browser, because half the surfaces here are
+translucent and the colour a reader actually sees is the composite:
+
+```bash
+npm run build && npx serve out -l 4124
+node scripts/contrast-audit.mjs      # needs playwright resolvable
 ```
 
 `npm run build` produces a fully static site in `out/` — 34 routes, each a real
@@ -410,6 +420,72 @@ Two things follow from this that nothing else in the app would show:
   the seller's money in someone else's pocket. The order reads as paid, so
   nothing would otherwise tell them it has not arrived. It is counted per rider,
   per trip, and the CFO raises it.
+
+## The till
+
+`/pos` is for the half of the trade that happens in front of you: somebody
+walks in, points at two things, and pays. Tap what they are buying, take the
+money, hand over a receipt.
+
+**One tap per item, and the till says no when it should.** Stock is counted the
+way that product is counted — a bale by its pieces, a phone by its handsets, a
+haircut not at all — so the grid can say *5 left* and mean it. Ringing up more
+than the shop has is refused with the number, not with a shrug.
+
+**Change is the sum a till is judged on.** Type what was handed over, or tap the
+note — 1,000 for a 740 bill — and the change comes back set large enough to read
+at arm's length. The likely notes are offered because the common interaction at
+a counter is confirming a number, not typing one.
+
+**A phone leaves with its IMEI attached.** Selling serialised stock means naming
+the unit; the sale is refused until one is picked. Without that the shop cannot
+say later which handset went out, and the warranty belongs to nobody.
+
+**Goods can leave without being paid for.** It happens — a neighbour, a regular,
+the end of a long day — and the till records the debt rather than forcing a cash
+sale that never happened. That is the one number a shop cannot afford to have
+wrong.
+
+**It is the same book.** A counter sale posts the same order, the same payment,
+the same ledger entry and the same ingredient draw as an order that came in on
+Instagram. There is no separate till ledger to reconcile at closing, because a
+second set of books is how a shop loses track of the first. It is written in one
+store update too: four separate calls would leave moments where the books say
+the shop sold something and was never paid, and on a phone that drops signal
+mid-sale, that is exactly the state that would sync.
+
+Cash and M-Pesa takings are shown apart, because they are reconciled apart — one
+is counted in a drawer, the other against a statement.
+
+## Receipts, and what makes one worth anything
+
+A receipt is a claim: this money reached this business. What makes the claim
+worth something is already in the customer's pocket.
+
+An M-Pesa payment produces a confirmation code, sent by Safaricom to both
+phones, unique across the whole network. A receipt quoting that code can be
+checked in seconds against a message the customer already has, from a party
+neither side controls. So where a transaction code exists it **is** the receipt
+number, and the receipt says exactly what to compare it against — the amount,
+and the till it went to.
+
+Where one does not exist — cash across a counter — the receipt says plainly that
+it is the seller's own record and nothing more. It never dresses a cash sale up
+in a reference designed to look like a bank's. Minting an official-looking code
+for every sale would make every receipt look equally trustworthy while making
+none of them checkable, which is worse than useless: it teaches customers that a
+code means nothing.
+
+The shape of a real code is checked rather than assumed. A seller typing "sent
+it" where a code should be gets a receipt that says so, not one telling their
+customer to go and look for "sent it".
+
+Two more things the receipt refuses to do. It is never issued for money that has
+not arrived — a pending push and a failed transfer are both states where a piece
+of paper saying *received* is false, and a customer holding one will reasonably
+expect their goods. And it never receipts a boda fare the seller never touched:
+that money is shown, clearly marked as paid to the rider, so the customer's own
+arithmetic still works without the seller signing for cash they never held.
 
 ## Money, and what the app will not pretend
 

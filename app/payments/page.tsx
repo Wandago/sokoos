@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
-import { Check, Link2, Sparkles, Wallet, X } from "lucide-react";
+import { Check, Link2, Receipt as ReceiptIcon, Sparkles, Wallet, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page";
 import { Hydrated } from "@/components/ui/hydrated";
 import { Segmented } from "@/components/ui/segmented";
@@ -15,6 +15,8 @@ import { Badge, ConfidenceMeter, PaymentStateBadge } from "@/components/ui/badge
 import { StatTile } from "@/components/ui/chart";
 import { useToast } from "@/components/ui/toast";
 import { useStore } from "@/lib/store";
+import { ReceiptSheet } from "@/components/receipt-sheet";
+import { receiptable } from "@/lib/receipts";
 import { useQuery } from "@/lib/use-query";
 import { customerOf, sellerReceives, unmatchedPayments } from "@/lib/selectors";
 import { clockTime, dayLabel, isSameDay, money, relativeTime } from "@/lib/format";
@@ -47,6 +49,7 @@ function PaymentsScreen() {
 
   const creating = get("new") === "1";
   const matching = db.payments.find((p) => p.id === get("match"));
+  const receipting = db.payments.find((p) => p.id === get("receipt"));
 
   const unmatched = unmatchedPayments(db);
   const today = db.payments.filter(
@@ -148,6 +151,7 @@ function PaymentsScreen() {
                 key={payment.id}
                 payment={payment}
                 onMatch={() => set("match", payment.id)}
+                onReceipt={() => set("receipt", payment.id)}
               />
             ))}
           </div>
@@ -166,12 +170,23 @@ function PaymentsScreen() {
       )}
 
       {matching && <MatchSheet payment={matching} onClose={() => set("match", null)} />}
+      {receipting && (
+        <ReceiptSheet payment={receipting} onClose={() => set("receipt", null)} />
+      )}
       <RecordPaymentSheet open={creating} onClose={() => set("new", null)} />
     </>
   );
 }
 
-function PaymentCard({ payment, onMatch }: { payment: Payment; onMatch: () => void }) {
+function PaymentCard({
+  payment,
+  onMatch,
+  onReceipt,
+}: {
+  payment: Payment;
+  onMatch: () => void;
+  onReceipt: () => void;
+}) {
   const { db } = useStore();
   const order = db.orders.find((o) => o.id === payment.orderId);
 
@@ -221,12 +236,28 @@ function PaymentCard({ payment, onMatch }: { payment: Payment; onMatch: () => vo
         </div>
       )}
 
-      {!payment.matched && payment.state !== "failed" && (
-        <Button size="sm" variant="secondary" full className="mt-3" onClick={onMatch}>
-          <Link2 className="size-4" />
-          Match to an order
-        </Button>
-      )}
+      {/* Money that arrived can always be receipted, matched to an order or
+          not. A customer asking for proof of a payment should not have to wait
+          for the seller to finish their bookkeeping. */}
+      <div className="mt-3 flex gap-2">
+        {!payment.matched && payment.state !== "failed" && (
+          <Button size="sm" variant="secondary" full onClick={onMatch}>
+            <Link2 className="size-4" />
+            Match to an order
+          </Button>
+        )}
+        {receiptable(payment) && (
+          <Button
+            size="sm"
+            variant={payment.matched ? "secondary" : "ghost"}
+            full={payment.matched}
+            onClick={onReceipt}
+          >
+            <ReceiptIcon className="size-4" />
+            Receipt
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

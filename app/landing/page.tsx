@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { SokoMark } from "@/components/soko-mark";
 import { PhoneMock } from "@/components/phone-mock";
-import { SpotCapture, SpotGrowth, SpotLedger, SpotRider } from "@/components/spot";
+import { SpotCapture, SpotGrowth, SpotLedger, SpotReceipt, SpotRider } from "@/components/spot";
 import { cn } from "@/lib/cn";
 
 const nav = [
@@ -205,7 +205,7 @@ export default function LandingPage() {
               (channel) => (
                 <span
                   key={channel}
-                  className="text-[17px] font-bold tracking-tight text-[#ABB5A8] transition-colors hover:text-forest-700 sm:text-[19px]"
+                  className="text-[17px] font-bold tracking-tight text-[#647063] transition-colors hover:text-forest-700 sm:text-[19px]"
                 >
                   {channel}
                 </span>
@@ -238,7 +238,7 @@ export default function LandingPage() {
                 key={step.title}
                 className="relative rounded-[22px] border border-[#E8ECE7] bg-[#F7F9F5] p-5"
               >
-                <span className="tabular text-[12px] font-extrabold text-[#ABB5A8]">
+                <span className="tabular text-[12px] font-extrabold text-[#647063]">
                   0{i + 1}
                 </span>
                 <span className="mt-3 flex size-11 items-center justify-center rounded-2xl bg-brand text-brand-ink">
@@ -275,6 +275,7 @@ export default function LandingPage() {
             <FeatureCard
               tone="lime"
               eyebrow="Smart Capture"
+              tags={["Camera", "Voice"]}
               title="Snap it. We organise it."
               body="Photograph a receipt or an M-Pesa message. The amount, date, merchant and transaction ID are read, matched to an order, and filed — with a confidence score you can check."
               Spot={SpotCapture}
@@ -284,9 +285,20 @@ export default function LandingPage() {
             <FeatureCard
               tone="forest"
               eyebrow="Deliveries"
+              tags={["Boda"]}
               title="Rider’s on the way."
               body="Assign by area and see what’s on the road."
               Spot={SpotRider}
+            />
+            <FeatureCard
+              tone="cream"
+              eyebrow="Receipts"
+              tags={["They can check it"]}
+              title="Proof, not paper."
+              body="Every payment gets a receipt carrying its M-Pesa code, so a customer can check it against the message already on their phone. Cash says plainly that it is your own record — because a receipt that looks official either way teaches people that official means nothing."
+              Spot={SpotReceipt}
+              wide
+              className="lg:col-span-2"
             />
             <FeatureCard
               tone="forest"
@@ -298,6 +310,7 @@ export default function LandingPage() {
             <FeatureCard
               tone="cream"
               eyebrow="Analytics"
+              tags={["Per channel"]}
               title="See what actually sells."
               body="Which channel brings the money, which product moves, which customer comes back — and what your average order is really worth."
               Spot={SpotGrowth}
@@ -528,9 +541,27 @@ function FloatCard({
 }
 
 const featureTones = {
-  lime: { card: "bg-brand text-brand-ink", muted: "text-brand-ink/70", surface: "lime" as const },
-  forest: { card: "bg-forest-900 text-white", muted: "text-forest-200", surface: "forest" as const },
-  cream: { card: "bg-white text-forest-950", muted: "text-[#5B665A]", surface: "paper" as const },
+  lime: {
+    card: "bg-brand text-brand-ink",
+    muted: "text-brand-ink/70",
+    chip: "bg-brand-ink/10 text-brand-ink",
+    panel: "bg-white/35",
+    surface: "lime" as const,
+  },
+  forest: {
+    card: "bg-forest-900 text-white",
+    muted: "text-forest-200",
+    chip: "bg-white/12 text-white",
+    panel: "bg-forest-950/45",
+    surface: "forest" as const,
+  },
+  cream: {
+    card: "bg-white text-forest-950",
+    muted: "text-[#5B665A]",
+    chip: "bg-forest-900/8 text-forest-900",
+    panel: "bg-[#F1F3EF]",
+    surface: "paper" as const,
+  },
 };
 
 function FeatureCard({
@@ -539,6 +570,7 @@ function FeatureCard({
   title,
   body,
   Spot,
+  tags,
   /** Only the two-column cards have room to sit the art beside the copy. */
   wide,
   className,
@@ -548,6 +580,8 @@ function FeatureCard({
   title: string;
   body: string;
   Spot: typeof SpotCapture;
+  /** Extra pills beside the eyebrow, in the style of the reference cards. */
+  tags?: string[];
   wide?: boolean;
   className?: string;
 }) {
@@ -555,24 +589,36 @@ function FeatureCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-6 rounded-[26px] p-6",
-        wide && "sm:flex-row sm:items-center",
+        "card-press flex flex-col gap-5 rounded-[26px] p-5",
+        wide && "sm:flex-row sm:items-center sm:gap-6",
         t.card,
         className,
       )}
     >
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] opacity-60">{eyebrow}</p>
-        <h3 className="mt-2 text-[24px] font-extrabold leading-tight tracking-[-0.03em]">{title}</h3>
+      <div className="min-w-0 flex-1 px-1 pt-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[eyebrow, ...(tags ?? [])].map((tag) => (
+            <span
+              key={tag}
+              className={cn("rounded-full px-2.5 py-1 text-[11px] font-bold tracking-tight", t.chip)}
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+        <h3 className="mt-3.5 text-[24px] font-extrabold leading-tight tracking-[-0.03em]">
+          {title}
+        </h3>
         <p className={cn("mt-3 text-[15px] leading-relaxed", t.muted)}>{body}</p>
       </div>
       <div
         className={cn(
-          "flex h-40 w-full shrink-0 items-center justify-center",
-          wide && "sm:h-44 sm:w-44",
+          "grid h-44 w-full shrink-0 place-items-center rounded-[18px]",
+          t.panel,
+          wide && "sm:h-48 sm:w-48",
         )}
       >
-        <Spot surface={t.surface} className="h-full w-auto" />
+        <Spot surface={t.surface} className="h-[84%] w-auto" />
       </div>
     </div>
   );

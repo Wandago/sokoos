@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Package,
   ScanLine,
+  Calculator,
   Settings,
   Store,
   Users,
@@ -27,12 +28,13 @@ export interface NavItem {
 
 export const primaryNav: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
+  { href: "/pos", label: "Till", icon: Calculator },
   { href: "/orders", label: "Orders", icon: Package, badge: "openOrders" },
-  { href: "/inbox", label: "Inbox", icon: MessageCircle, badge: "inbox" },
 ];
 
 export const allNav: NavItem[] = [
   { href: "/", label: "Dashboard", icon: Home },
+  { href: "/pos", label: "Till", icon: Calculator },
   { href: "/orders", label: "Orders", icon: Package, badge: "openOrders" },
   { href: "/inbox", label: "Inbox", icon: MessageCircle, badge: "inbox" },
   { href: "/customers", label: "Customers", icon: Users },

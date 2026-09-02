@@ -39,6 +39,10 @@
   --ink-200: #D2D9CF;
   --ink-300: #ABB5A8;
   --ink-400: #7F8B7C;
+  /* The lightest ink that still clears 4.5:1 on white, on the sunken surface
+     and on the page background. ink-400 does not: it measures 3.19:1 on the
+     page background, which is a timestamp nobody can read outdoors. */
+  --ink-450: #647063;
   --ink-500: #5B665A;
   --ink-600: #414B40;
   --ink-700: #2C352C;
@@ -75,7 +79,7 @@
 
   --text:            var(--ink-900);
   --text-secondary:  var(--ink-500);
-  --text-muted:      var(--ink-400);
+  --text-muted:      var(--ink-450);
   --text-inverted:   #ffffff;
 
   /* Brand is a surface, --brand-ink is what sits on it. Text that needs to
@@ -151,7 +155,7 @@
 
   --text:            #EAF2EB;
   --text-secondary:  var(--ink-300);
-  --text-muted:      var(--ink-400);
+  --text-muted:      #93A08F;
   --text-inverted:   var(--ink-950);
 
   --brand:           var(--lime-500);
@@ -351,6 +355,76 @@
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
   .ring-brand-soft { box-shadow: 0 0 0 4px var(--brand-ring); }
+
+  /* Snap deck. Cards are wider than the screen on purpose — a card cut off at
+     the edge is the only reliable way to say "there is more here" on a phone,
+     and it beats an arrow nobody taps. */
+  .deck {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: 1rem;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+  .deck > * { scroll-snap-align: start; flex: 0 0 auto; }
+
+  /* A pressable card: lifts under the finger and settles back. */
+  .card-press {
+    transition: transform .18s cubic-bezier(.22,.8,.36,1), box-shadow .18s ease;
+  }
+  .card-press:active { transform: scale(.975); }
+  @media (hover: hover) {
+    .card-press:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover, 0 10px 30px -12px rgb(0 0 0 / .22)); }
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * The receipt
+ * ------------------------------------------------------------------ */
+
+/* The bite out of each side where a ticket was torn from its stub, plus the
+   perforation between them. Two notches read as a receipt instantly; a
+   scalloped edge does not, because the paper below the fold is the same colour
+   as the paper above it and the scallops simply disappear. */
+.receipt-notch {
+  position: relative;
+  height: 0;
+}
+.receipt-notch::before,
+.receipt-notch::after {
+  content: "";
+  position: absolute;
+  top: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--color-surface);
+}
+.receipt-notch::before { left: -9px; }
+.receipt-notch::after  { right: -9px; }
+
+/* The perforation itself, drawn between the two notches. */
+.receipt-perf {
+  height: 0;
+  margin: 0 12px;
+  border-top: 2px dashed var(--color-border);
+}
+
+/* Printing a receipt should produce the receipt, not the app around it. */
+@media print {
+  body { background: #fff; }
+  body * { visibility: hidden; }
+  .receipt-paper, .receipt-paper * { visibility: visible; }
+  .receipt-paper {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 78mm;                 /* the width of an ordinary thermal roll */
+    border: 0;
+    box-shadow: none;
+  }
+  .receipt-notch, .receipt-perf { display: none; }
 }
 
 /* Motion communicates state, never decoration. */

@@ -2,21 +2,30 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { SokoMark } from "@/components/soko-mark";
+import { Deck } from "@/components/ui/deck";
 import { onboardingCards, themes } from "@/lib/onboarding";
 import { cn } from "@/lib/cn";
 
 export const ONBOARDED_KEY = "sokoos.onboarded";
 
+/**
+ * The tour.
+ *
+ * Rebuilt as a deck you scroll rather than a slideshow you advance. The
+ * difference matters more than it looks: a slideshow hides how long it is, so
+ * every tap is a small gamble on whether this ends soon. A deck shows the whole
+ * set at once — seven cards, one thumb-flick apart — and the seller can read
+ * two and leave, which is the honest bargain for a tour nobody asked for.
+ *
+ * The page itself stays neutral. Colour belongs to the cards, so the eye goes
+ * to them and not to a background that changes under it.
+ */
 export default function WelcomePage() {
   const router = useRouter();
-  const [index, setIndex] = useState(0);
-  const startX = useRef<number | null>(null);
-
-  const card = onboardingCards[index];
-  const theme = themes[card.theme];
-  const last = index === onboardingCards.length - 1;
+  const [seen, setSeen] = useState(0);
+  const track = useRef<HTMLDivElement>(null);
 
   const finish = useCallback(() => {
     try {
@@ -29,107 +38,134 @@ export default function WelcomePage() {
     router.push("/signup");
   }, [router]);
 
-  const go = useCallback(
-    (next: number) => setIndex(Math.min(onboardingCards.length - 1, Math.max(0, next))),
-    [],
-  );
-
+  /* Which card is roughly in view, for the progress dots. Read from scroll
+   * position rather than driving it, so a flick that lands between two cards
+   * still lights the nearer dot instead of fighting the browser's snapping. */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") go(index + 1);
-      if (e.key === "ArrowLeft") go(index - 1);
+    const el = track.current?.querySelector<HTMLElement>(".deck");
+    if (!el) return;
+    const onScroll = () => {
+      const step = (el.firstElementChild as HTMLElement | null)?.offsetWidth ?? 1;
+      setSeen(Math.round(el.scrollLeft / (step + 12)));
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [index, go]);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <div className={cn("flex min-h-dvh flex-col transition-colors duration-300", theme.card)}>
+    <div className="flex min-h-dvh flex-col bg-bg">
       <div className="pt-safe" />
 
       <header className="flex items-center justify-between px-5 pt-4">
         <span className="flex items-center gap-2">
           <SokoMark className="size-8" />
-          <span className={cn("text-[15px] font-extrabold tracking-tight", theme.text)}>SokoOS</span>
+          <span className="text-[15px] font-extrabold tracking-tight">SokoOS</span>
         </span>
-        {!last && (
-          <button
-            onClick={finish}
-            className={cn("text-[13px] font-semibold opacity-70 hover:opacity-100", theme.text)}
-          >
-            Skip
-          </button>
-        )}
+        <button
+          onClick={finish}
+          className="text-[13px] font-semibold text-text-secondary hover:text-text"
+        >
+          Skip
+        </button>
       </header>
 
-      {/* Swipe area. Touch on a phone, arrow keys on a desktop.
-          Message first, then the picture — the reference cards lead with the
-          promise, not the illustration. */}
-      <div
-        key={card.id}
-        className="animate-rise flex min-h-0 flex-1 flex-col px-5 pt-7"
-        onPointerDown={(e) => {
-          startX.current = e.clientX;
-        }}
-        onPointerUp={(e) => {
-          if (startX.current === null) return;
-          const dx = e.clientX - startX.current;
-          if (Math.abs(dx) > 48) go(dx < 0 ? index + 1 : index - 1);
-          startX.current = null;
-        }}
-      >
-        <div className="mx-auto w-full max-w-sm">
-          <p
-            className={cn("text-[11px] font-bold uppercase tracking-[0.14em] opacity-60", theme.text)}
-          >
-            {card.eyebrow}
+      <div className="flex min-h-0 flex-1 flex-col px-5 pb-4 pt-8">
+        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-text-muted">
+            Welcome to SokoOS
           </p>
-          <h1
-            className={cn(
-              "mt-2 text-[36px] font-extrabold leading-[1.02] tracking-[-0.04em]",
-              theme.text,
-            )}
-          >
-            {card.headline}
+          <h1 className="mt-2 max-w-[13ch] text-[34px] font-extrabold leading-[0.98] tracking-[-0.045em] lg:text-[54px]">
+            Everything your shop does, in one book.
           </h1>
-          <p className={cn("mt-3 text-[15px] leading-relaxed", theme.muted)}>{card.body}</p>
-        </div>
 
-        {/* The drawing sits straight on the card — its own palette flips per
-            surface, so the whole screen stays one solid colour. */}
-        <div className="flex min-h-0 flex-1 items-center justify-center py-4">
-          <card.Spot surface={card.theme} className="h-full max-h-[46vh] w-auto max-w-sm" />
+          {/* The deck takes whatever height is left, and the cards stretch to
+              fill it — so the picture grows on a tall phone instead of leaving
+              a band of empty page under the deck. */}
+          <div ref={track} className="mt-6 flex min-h-0 flex-1 flex-col">
+            <Deck
+              label="What SokoOS does"
+              className="flex min-h-0 flex-1 flex-col"
+              trackClassName="min-h-0 flex-1 items-stretch"
+              title={<span className="sr-only">Features</span>}
+            >
+              {onboardingCards.map((card) => {
+                const t = themes[card.theme];
+                return (
+                  <article
+                    key={card.id}
+                    className={cn(
+                      "card-press flex w-[76vw] max-w-[19rem] flex-col overflow-hidden rounded-[1.75rem]",
+                      t.card,
+                    )}
+                  >
+                    <div className="px-4 pt-4">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {card.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-[11px] font-bold tracking-tight",
+                              t.chip,
+                            )}
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+
+                      <h2
+                        className={cn(
+                          "mt-3.5 text-[27px] font-extrabold leading-[1.02] tracking-[-0.04em]",
+                          t.text,
+                        )}
+                      >
+                        {card.headline}
+                      </h2>
+                      <p className={cn("mt-2 text-[13px] leading-relaxed", t.muted)}>{card.body}</p>
+                    </div>
+
+                    {/* The drawing owns the lower half, the way the photograph
+                        does on the cards this is modelled on. A tinted panel
+                        rather than a second colour, so the card still reads as
+                        one surface with a picture set into it. */}
+                    <div className="mt-auto flex min-h-0 flex-1 p-3 pt-4">
+                      <div
+                        className={cn(
+                          "grid min-h-[7rem] w-full place-items-center overflow-hidden rounded-[1.25rem]",
+                          t.panel,
+                        )}
+                      >
+                        <card.Spot surface={card.theme} className="h-[88%] max-h-52 w-auto" />
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </Deck>
+          </div>
         </div>
       </div>
 
-      <footer className="pb-safe px-5 pb-6 pt-7">
-        <div className="mx-auto flex max-w-sm items-center justify-between gap-4">
-          <div className="flex items-center gap-1.5" role="tablist" aria-label="Onboarding progress">
+      <footer className="pb-safe px-5 pb-6 pt-2">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+          <div className="flex items-center gap-1.5" aria-hidden>
             {onboardingCards.map((c, i) => (
-              <button
+              <span
                 key={c.id}
-                role="tab"
-                aria-selected={i === index}
-                aria-label={c.headline}
-                onClick={() => go(i)}
                 className={cn(
-                  "h-1.5 rounded-full transition-all duration-300",
-                  i === index ? "w-6" : "w-1.5 opacity-35",
-                  theme.dot,
+                  "h-1.5 rounded-full bg-forest-900 transition-all duration-300",
+                  i === seen ? "w-6" : "w-1.5 opacity-25",
                 )}
               />
             ))}
           </div>
 
           <button
-            onClick={() => (last ? finish() : go(index + 1))}
-            className={cn(
-              "inline-flex h-12 items-center gap-2 rounded-full px-6 text-[15px] font-bold transition-transform active:scale-95",
-              theme.chip,
-            )}
+            onClick={finish}
+            className="inline-flex h-12 items-center gap-2 rounded-full bg-forest-900 px-6 text-[15px] font-bold text-white transition-transform active:scale-95"
           >
-            {last ? "Create my account" : "Next"}
-            {last ? <Check className="size-4" strokeWidth={3} /> : <ArrowRight className="size-4" strokeWidth={2.6} />}
+            Create my account
+            <ArrowRight className="size-4" strokeWidth={2.6} />
           </button>
         </div>
       </footer>

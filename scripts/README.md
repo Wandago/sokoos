@@ -20,3 +20,27 @@ npm run check
 
 They print `ok` / `FAIL` per assertion; `speech-check.ts` exits non-zero on
 failure so it can gate a build.
+
+## `receipt-check.ts`
+
+What a receipt claims. A code presented as checkable when it is not, a boda fare
+receipted as business income, and a receipt issued for money that has not
+arrived are the three ways a receipt can mislead the person holding it, so those
+are what this checks. Includes the reprint case: the same payment must produce
+the same receipt number next year.
+
+## `pos-check.ts`
+
+The till. A counter sale is final the moment the customer walks away, so this
+covers the sums that have to be right in front of somebody waiting: change from
+a note, what is still owed on a short payment, whether the shop can actually
+hand over what has been rung up, and that serialised stock is counted from its
+units rather than from the tally typed on the product.
+
+## `contrast-audit.mjs`
+
+Not part of `npm run check` — it needs a browser and a built site. It walks
+every screen in both themes and measures each piece of text against what is
+actually behind it, compositing translucent ancestors down to the page
+background. Run it after touching colour tokens; it found 110 failures the first
+time it was pointed at this app.

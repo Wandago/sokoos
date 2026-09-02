@@ -186,6 +186,31 @@ console.log("\na payment with no order behind it still receipts\n");
   check("with no order number invented", r.orderCode === undefined);
 }
 
+console.log("\na price that was bargained down\n");
+
+{
+  const o = order("customer_pays_rider", {
+    items: [{ productId: "p", name: "Redmi 13C", qty: 1, price: 13000, listPrice: 14500 }],
+  });
+  const p = payment({ amount: 13000 });
+  const r = buildReceipt(world(o, p), p);
+
+  expect("the receipt totals what was agreed", r.total, 13000);
+  expect("and shows what came off", r.bargained, 1500);
+  expect("with the asking price on the line", r.lines[0]!.listPrice, 14500);
+  check("the message says what they saved", receiptText(r).includes("You saved"), receiptText(r));
+  // The proof line quotes the amount that actually moved, not the shelf price.
+  check("and the code checks against the paid amount", r.proof.line.includes("13,000"), r.proof.line);
+}
+
+{
+  // Sold at the asking price: no saving line, no struck-through number.
+  const r = buildReceipt(world(order("customer_pays_rider"), payment()), payment());
+  expect("nothing saved when nothing was bargained", r.bargained, 0);
+  check("and no asking price on the line", r.lines[0]!.listPrice === undefined);
+  check("nor in the message", !receiptText(r).includes("You saved"));
+}
+
 console.log("\nthe message a customer receives\n");
 
 {

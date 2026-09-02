@@ -27,6 +27,8 @@ export interface TillStatus {
   lastEventAt?: string | null;
   /** Masked. Enough to recognise, not enough to use. */
   consumerKey?: string;
+  /** Whether a passkey is on file — the one thing STK push needs. */
+  canPrompt?: boolean;
   confirmationUrl?: string;
   validationUrl?: string;
 }
@@ -94,6 +96,27 @@ export async function connectTill(credentials: TillCredentials): Promise<TillSta
  */
 export async function registerTill(): Promise<{ ok: boolean; detail?: unknown }> {
   return call(tenantPath("/register"), { method: "POST" }, token());
+}
+
+/**
+ * Asks a customer's phone for the money.
+ *
+ * The prompt appears on their handset and the money goes to the seller's own
+ * shortcode — the same one they would have typed by hand. What this saves is
+ * not a step for the seller, it is the step where the customer mistypes a till
+ * number, and the step afterwards where somebody reads a code off a cracked
+ * screen and gets a character wrong.
+ *
+ * Only worth offering when a passkey is on file: STK push is the one Daraja
+ * call that needs it.
+ */
+export async function promptForPayment(input: {
+  phone: string;
+  amount: number;
+  reference: string;
+}): Promise<{ ok: boolean; detail?: string }> {
+  await call(tenantPath("/request"), { method: "POST", body: JSON.stringify(input) }, token());
+  return { ok: true };
 }
 
 export async function fetchUnmatched(): Promise<UnmatchedEvent[]> {

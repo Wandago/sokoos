@@ -132,6 +132,15 @@ export function ReceiptSheet({ payment, onClose }: { payment: Payment; onClose: 
                       </span>
                     )}
                     {line.label}
+                    {/* The asking price, struck through. A customer who
+                        negotiated wants to see it, and a receipt that quietly
+                        drops the number invites the question of whether the
+                        right price was charged at all. */}
+                    {line.listPrice && (
+                      <span className="tabular ml-1.5 text-[12px] text-text-muted line-through">
+                        {money(line.listPrice)}
+                      </span>
+                    )}
                   </span>
                   <span className="tabular shrink-0 text-[13px] font-semibold">
                     {money(line.total)}
@@ -143,6 +152,12 @@ export function ReceiptSheet({ payment, onClose }: { payment: Payment; onClose: 
             <div className="my-4 border-t border-dashed border-border" />
 
             <dl className="space-y-1.5 text-[13px]">
+              {receipt.bargained > 0 && (
+                <div className="flex items-baseline justify-between gap-3 text-success-text">
+                  <dt className="font-semibold">You saved</dt>
+                  <dd className="tabular font-bold">{money(receipt.bargained)}</dd>
+                </div>
+              )}
               {receipt.discount > 0 && (
                 <Row label="Discount" value={money(-receipt.discount)} />
               )}

@@ -1,11 +1,15 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Banknote,
+  Building2,
   Check,
+  Loader2,
+  Send,
   Minus,
   Plus,
+  Pencil,
   Receipt as ReceiptIcon,
   Smartphone,
   Trash2,
@@ -24,6 +28,9 @@ import { ReceiptSheet } from "@/components/receipt-sheet";
 import { useStore } from "@/lib/store";
 import {
   availableSerials,
+  bargainOn,
+  bargainSuggestions,
+  priceVerdict,
   blockers,
   canSell,
   cartTotals,
@@ -37,6 +44,7 @@ import {
 } from "@/lib/pos";
 import { money } from "@/lib/format";
 import { looksLikeMpesaCode } from "@/lib/receipts";
+import { fetchTill, promptForPayment, tillAvailable, type TillStatus } from "@/lib/sync/mpesa";
 import type { Payment, PaymentMethod, Product } from "@/lib/types";
 import { cn } from "@/lib/cn";
 
@@ -72,10 +80,12 @@ function PosScreen() {
   const [category, setCategory] = useState("All");
   const [paying, setPaying] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
+  const [haggling, setHaggling] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Payment | null>(null);
 
   const day = tillToday(db);
   const totals = cartTotals(lines);
+  const bargain = bargainOn(lines);
   const problems = blockers(db, lines);
 
   const sellable = useMemo(
@@ -113,7 +123,14 @@ function PosScreen() {
       }
       return [
         ...prev,
-        { productId: product.id, name: product.name, price: product.price, qty: 1 },
+        {
+          productId: product.id,
+          name: product.name,
+          price: product.price,
+          listPrice: product.price,
+          cost: product.cost,
+          qty: 1,
+        },
       ];
     });
     // A serialised product cannot be sold without naming the unit, so ask now
@@ -245,12 +262,25 @@ function PosScreen() {
                   <div key={line.productId} className="flex items-center gap-2 py-1.5">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[14px] font-semibold">{line.name}</p>
-                      <p className="tabular text-[12px] text-text-secondary">
-                        {money(line.price)} each
+                      <p className="tabular flex items-center gap-1.5 overflow-hidden text-[12px] whitespace-nowrap text-text-secondary">
+                        {/* The price is a button, because in this market it is
+                            the field most likely to change between picking the
+                            thing up and paying for it. */}
+                        <button
+                          onClick={() => setHaggling(line.productId)}
+                          className="inline-flex items-center gap-1 font-semibold text-text underline decoration-dotted underline-offset-2"
+                        >
+                          {money(line.price)}
+                          <Pencil className="size-3" />
+                        </button>
+                        {line.listPrice !== undefined && line.listPrice > line.price && (
+                          <span className="text-text-muted line-through">{money(line.listPrice)}</span>
+                        )}
+                        {line.qty > 1 && <span>each</span>}
                         {needsSerial && (
                           <button
                             onClick={() => setPicking(line.productId)}
-                            className="ml-2 font-semibold text-danger underline"
+                            className="font-semibold text-danger underline"
                           >
                             pick which one
                           </button>
@@ -273,6 +303,14 @@ function PosScreen() {
                 );
               })}
             </div>
+
+            {bargain.negotiated && (
+              <p className="tabular mt-1.5 text-[12px] text-text-secondary">
+                Bargained down{" "}
+                <span className="font-semibold text-text">{money(bargain.given)}</span> from{" "}
+                {money(bargain.listed)}
+              </p>
+            )}
 
             {problems.length > 0 && (
               <p className="mt-2 text-[12px] font-medium text-danger">{problems[0]}</p>
@@ -317,6 +355,18 @@ function PosScreen() {
           onChoose={(productId, serialIds) =>
             setLines((prev) =>
               prev.map((l) => (l.productId === productId ? { ...l, serialIds } : l)),
+            )
+          }
+        />
+      )}
+
+      {haggling && (
+        <PriceSheet
+          line={lines.find((l) => l.productId === haggling)!}
+          onClose={() => setHaggling(null)}
+          onAgree={(price) =>
+            setLines((prev) =>
+              prev.map((l) => (l.productId === haggling ? { ...l, price } : l)),
             )
           }
         />
@@ -417,7 +467,26 @@ function PaySheet({
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [tendered, setTendered] = useState(String(total));
   const [reference, setReference] = useState("");
+  const [phone, setPhone] = useState("");
+  const [prompting, setPrompting] = useState(false);
+  const [prompted, setPrompted] = useState(false);
+  const [till, setTill] = useState<TillStatus | null>(null);
+  const toast = useToast();
 
+  // Whether this seller can push a prompt at all: it needs a connected till
+  // with a passkey, and saying so up front beats a button that fails.
+  useEffect(() => {
+    if (!tillAvailable()) return;
+    let live = true;
+    fetchTill()
+      .then((next) => live && setTill(next))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const canPrompt = Boolean(till?.connected && till.canPrompt);
   const given = Number(tendered) || 0;
   const cash = cashOutcome(total, given);
   const suggestions = tenderSuggestions(total);
@@ -456,7 +525,7 @@ function PaySheet({
       }
     >
       <div className="space-y-5 pb-4">
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-3 gap-2">
           <MethodButton
             active={method === "cash"}
             onClick={() => {
@@ -474,6 +543,15 @@ function PaySheet({
             }}
             icon={<Smartphone className="size-5" />}
             label="M-Pesa"
+          />
+          <MethodButton
+            active={method === "bank"}
+            onClick={() => {
+              setMethod("bank");
+              setTendered(String(total));
+            }}
+            icon={<Building2 className="size-5" />}
+            label="Bank"
           />
         </div>
 
@@ -528,6 +606,37 @@ function PaySheet({
               </div>
             )}
           </>
+        ) : method === "bank" ? (
+          <>
+            <Field label="Amount received">
+              <Input
+                prefix="KES"
+                inputMode="numeric"
+                value={tendered}
+                onChange={(e) => setTendered(e.target.value.replace(/\D/g, ""))}
+              />
+            </Field>
+
+            <Field
+              label="Bank reference"
+              hint="From the transfer confirmation. It is what the customer's own statement will show."
+            >
+              <Input
+                value={reference}
+                spellCheck={false}
+                onChange={(e) => setReference(e.target.value)}
+              />
+            </Field>
+
+            {/* Said here rather than discovered later: nothing tells this app
+                when a bank transfer lands, so a bank payment is only as
+                current as the person typing it in. */}
+            <p className="rounded-2xl bg-surface-sunken p-3 text-[12px] leading-relaxed text-text-secondary">
+              Bank transfers do not reach SokoOS on their own — no Kenyan bank offers what M-Pesa
+              does here. Record it now and it is in the books immediately; otherwise import the
+              statement later and anything already recorded is skipped by its reference.
+            </p>
+          </>
         ) : (
           <>
             <Field label="Amount received">
@@ -559,6 +668,67 @@ function PaySheet({
               <p className="flex items-center gap-1.5 text-[13px] font-semibold text-success-text">
                 <Check className="size-4" strokeWidth={2.8} />
                 That will make the receipt checkable.
+              </p>
+            )}
+
+            {/* Asking the phone instead of asking the person.
+                Saves the customer mistyping the till number, and saves the
+                seller reading a code off a cracked screen. */}
+            {canPrompt && (
+              <div className="rounded-2xl border border-border-subtle p-3.5">
+                <p className="text-[13px] font-semibold">Or ask their phone</p>
+                <p className="mt-1 text-[12px] leading-relaxed text-text-secondary">
+                  A prompt appears on their handset. The money goes to your own
+                  {till?.kind === "paybill" ? " paybill " : " till "}
+                  {till?.shortcode}, exactly as it does now.
+                </p>
+
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    inputMode="tel"
+                    placeholder="07xx xxx xxx"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="secondary"
+                    disabled={prompting || phone.replace(/\D/g, "").length < 9}
+                    onClick={async () => {
+                      setPrompting(true);
+                      try {
+                        await promptForPayment({
+                          phone,
+                          amount: total,
+                          reference: "Till sale",
+                        });
+                        setPrompted(true);
+                        toast("Sent. Ask them to enter their M-Pesa PIN.");
+                      } catch (error) {
+                        toast((error as Error).message, "error");
+                      } finally {
+                        setPrompting(false);
+                      }
+                    }}
+                  >
+                    {prompting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                    Send
+                  </Button>
+                </div>
+
+                {prompted && (
+                  <p className="mt-2.5 text-[12px] leading-relaxed text-text-secondary">
+                    Waiting for them. When they pay, it arrives here by itself with its code —
+                    you do not need to type anything. If they cancel, take the money another way.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {till?.connected && !till.canPrompt && (
+              <p className="text-[12px] leading-relaxed text-text-muted">
+                To prompt a customer&rsquo;s phone instead of typing the code, add your Daraja passkey
+                in Settings.
               </p>
             )}
           </>
@@ -685,6 +855,143 @@ function SerialSheet({
           <p className="py-6 text-center text-[13px] text-text-secondary">
             No units of this in stock. Receive some under Stock first.
           </p>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Agreeing a price
+ * ------------------------------------------------------------------ */
+
+/**
+ * The haggle.
+ *
+ * The shelf price is an opening position here, not a fact, so this is not a
+ * "discount" applied to a real number — it is where the real number gets set.
+ * That distinction is the whole reason this sheet exists: recording 14,500 and
+ * a 1,500 discount would put a figure on the receipt the customer never paid,
+ * and leave the payment that arrives matching nothing.
+ *
+ * The suggestions follow the size of the price, because a hundred shillings off
+ * a head wrap and a hundred off a television are different conversations. What
+ * the seller is left with is shown the moment it gets thin, and said plainly
+ * when it goes under cost — but never blocked. Somebody clearing old stock at a
+ * loss is making a decision, and a till that refuses it is a till they will
+ * work around.
+ */
+function PriceSheet({
+  line,
+  onClose,
+  onAgree,
+}: {
+  line: CartLine;
+  onClose: () => void;
+  onAgree: (price: number) => void;
+}) {
+  const listPrice = line.listPrice ?? line.price;
+  const [price, setPrice] = useState(String(line.price));
+
+  const agreed = Number(price) || 0;
+  const verdict = priceVerdict(agreed, line.cost);
+  const off = Math.max(0, listPrice - agreed);
+  const suggestions = bargainSuggestions(listPrice);
+
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title={line.name}
+      description={`Asking ${money(listPrice)}. Set what you agreed.`}
+      size="lg"
+      footer={
+        <Button
+          full
+          size="lg"
+          disabled={agreed <= 0}
+          onClick={() => {
+            onAgree(agreed);
+            onClose();
+          }}
+        >
+          <Check className="size-4" strokeWidth={2.8} />
+          Agree {money(agreed)}
+        </Button>
+      }
+    >
+      <div className="space-y-5 pb-4">
+        <Field label="Price agreed">
+          <Input
+            prefix="KES"
+            inputMode="numeric"
+            value={price}
+            onChange={(e) => setPrice(e.target.value.replace(/\D/g, ""))}
+          />
+        </Field>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setPrice(String(listPrice))}
+            className={cn(
+              "tabular rounded-full px-3.5 py-2 text-[13px] font-bold transition-colors",
+              agreed === listPrice
+                ? "bg-forest-900 text-white"
+                : "bg-surface-sunken text-text hover:bg-surface-hover",
+            )}
+          >
+            Full price
+          </button>
+          {suggestions.map((option) => (
+            <button
+              key={option}
+              onClick={() => setPrice(String(option))}
+              className={cn(
+                "tabular rounded-full px-3.5 py-2 text-[13px] font-bold transition-colors",
+                agreed === option
+                  ? "bg-forest-900 text-white"
+                  : "bg-surface-sunken text-text hover:bg-surface-hover",
+              )}
+            >
+              {money(option)}
+            </button>
+          ))}
+        </div>
+
+        {off > 0 && (
+          <p className="tabular text-[13px] text-text-secondary">
+            <span className="font-semibold text-text">{money(off)}</span> off the asking price
+            {line.qty > 1 && (
+              <>
+                {" "}
+                · <span className="font-semibold text-text">{money(off * line.qty)}</span> across{" "}
+                {line.qty}
+              </>
+            )}
+          </p>
+        )}
+
+        {verdict.level !== "fine" && (
+          <div
+            className={cn(
+              "rounded-2xl p-4",
+              verdict.level === "under_cost"
+                ? "bg-danger-soft text-danger-text"
+                : "bg-pending-soft text-pending-text",
+            )}
+          >
+            <p className="flex items-center gap-1.5 text-[12px] font-bold uppercase tracking-[0.12em]">
+              <TriangleAlert className="size-3.5" strokeWidth={2.6} />
+              {verdict.level === "under_cost" ? "Below cost" : "Thin margin"}
+            </p>
+            <p className="mt-1.5 text-[14px] font-semibold">{verdict.message}</p>
+            {verdict.level === "under_cost" && (
+              <p className="mt-1 text-[12px] leading-relaxed">
+                Your call — sometimes moving it is worth more than the margin. It will be
+                recorded as a loss on this line.
+              </p>
+            )}
+          </div>
         )}
       </div>
     </Sheet>

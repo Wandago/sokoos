@@ -73,6 +73,7 @@ GET  /tenants/:id/mpesa/unmatched                   → money in, order unknown
 
 POST /mpesa/c2b/:secret/confirmation                → Safaricom, on payment
 POST /mpesa/c2b/:secret/validation                  → Safaricom, before payment
+POST /mpesa/stk/:secret                             → Safaricom, STK push outcome
 ```
 
 Auth is closed by default: `PUBLIC_PATHS` in `src/index.ts` is the entire list

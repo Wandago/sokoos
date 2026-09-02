@@ -9,6 +9,7 @@ import {
   sellerReceives,
   unmatchedPayments,
 } from "./selectors";
+import { bargainReport } from "./pos";
 
 /**
  * The CFO brief.
@@ -392,6 +393,34 @@ export function cfoFindings(db: Database): Finding[] {
       figure: kes(mom.revenue.change),
       body: `You collected ${kes(mom.revenue.value)} this month against ${kes(mom.revenue.previous)} last month, and kept ${kes(cash.net)} of it.`,
       workings: `${kes(mom.revenue.value)} this 30 days vs ${kes(mom.revenue.previous)} the 30 before.`,
+    });
+  }
+
+  /* What the haggling cost.
+   *
+   * Invisible one sale at a time and decisive by the thirtieth: two hundred
+   * shillings off a phone feels like nothing at the counter. This is not an
+   * argument against bargaining — it is how business is done here — but a
+   * seller who knows the number can decide where to hold, or price with the
+   * negotiation already built in. Raised only once there is enough of it to
+   * be worth a conversation. */
+  const haggling = bargainReport(db, 30);
+  if (haggling.given > 0 && haggling.sales >= 3) {
+    const worst = haggling.worst[0];
+    found.push({
+      id: "bargaining",
+      severity: haggling.averageCut > 0.12 ? "watch" : "good",
+      title: "What bargaining cost you",
+      figure: kes(haggling.given),
+      body:
+        `${Math.round(haggling.rate * 100)}% of your sales in the last 30 days were negotiated, ` +
+        `at an average of ${(haggling.averageCut * 100).toFixed(1)}% off the asking price.` +
+        (worst
+          ? ` ${worst.name} gets talked down most — ${worst.times} times, ${kes(worst.given)} in total.`
+          : "") +
+        " Nothing wrong with that. It is worth knowing the number.",
+      workings: `${haggling.sales} of ${haggling.total} sales negotiated, ${kes(haggling.given)} off the listed prices.`,
+      action: { label: "See what you sell", href: "/products/" },
     });
   }
 

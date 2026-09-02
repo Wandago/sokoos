@@ -347,7 +347,16 @@ export interface OrderItem {
   productId: string;
   name: string;
   qty: number;
+  /** What was agreed — the price the customer actually paid. */
   price: number;
+  /**
+   * What the item was listed at, when it was bargained down.
+   *
+   * Absent on everything sold at the asking price, which keeps the common case
+   * free of a field that repeats `price`. Its presence is what makes a sale a
+   * negotiated one, and what lets the books say later how much haggling cost.
+   */
+  listPrice?: number;
 }
 
 export interface Order {

@@ -20,6 +20,7 @@ Discovery → Conversation → Order → Payment → Delivery → Reconciliation
 | **Customers** | Order history, lifetime spend, and what each person still owes |
 | **Products** | Prices, cost, margin per item, and low-stock warnings |
 | **Payments** | M-Pesa, cash and bank payments, with suggested matches for anything unreconciled |
+| **Bargaining** | Set the price you actually agreed, see what it leaves you, and find out at the end of the month what the haggling cost |
 | **Receipts** | Every payment that arrived can be receipted and sent on WhatsApp, carrying the M-Pesa code the customer can check against their own message |
 | **Deliveries** | Riders, zones, what is on the road, the handover moment, and cash a rider is still holding |
 | **Diary** | For work sold by the hour: what is booked, who is doing it, how much of the day is still free, and which slots are held without a deposit |
@@ -441,6 +442,24 @@ a counter is confirming a number, not typing one.
 the unit; the sale is refused until one is picked. Without that the shop cannot
 say later which handset went out, and the warranty belongs to nobody.
 
+**The price is what was agreed, not what the shelf says.** In most of this
+market the shelf price is an opening position: a 14,500 phone leaves at 13,000
+and everyone considers that a normal Tuesday. Tap the price on the line and set
+what you settled on; the suggestions step by the size of the number, because a
+hundred shillings off a head wrap and a hundred off a television are different
+conversations.
+
+Recording the list price and calling the gap a "discount" would get two separate
+things wrong: the receipt would show a figure the customer never paid, and the
+payment that arrives would match no order. So the agreed price is *the* price,
+with the asking price kept beside it — which is what lets the books say later
+what the haggling cost.
+
+The till says what a negotiated price leaves you the moment it gets thin, and
+says plainly when it goes under cost. It never refuses. A seller clearing old
+stock at a loss is making a decision, and a till that blocks them is a till they
+will work around.
+
 **Goods can leave without being paid for.** It happens — a neighbour, a regular,
 the end of a long day — and the till records the debt rather than forcing a cash
 sale that never happened. That is the one number a shop cannot afford to have
@@ -456,6 +475,46 @@ mid-sale, that is exactly the state that would sync.
 
 Cash and M-Pesa takings are shown apart, because they are reconciled apart — one
 is counted in a drawer, the other against a statement.
+
+### Asking the phone instead of asking the person
+
+On M-Pesa the till can push a prompt to the customer's handset rather than
+waiting for them to type a till number and then reading a code back off a
+cracked screen. The money still goes to the seller's own shortcode; nothing
+about where it lands changes. What disappears is the two places a counter
+transaction usually goes wrong.
+
+It needs a Daraja passkey on file, and the till says so rather than offering a
+button that fails. The payment itself arrives through the ordinary confirmation
+and files itself, deduped on its receipt code, so a customer who pays cannot be
+charged twice by the two callbacks racing.
+
+### Bank payments, and where this genuinely falls short
+
+**There is no equivalent of this for banks in Kenya, and pretending otherwise
+would be the dishonest thing to do.** M-Pesa has Daraja: a seller registers
+their own shortcode and Safaricom calls a URL the moment money lands. No Kenyan
+bank offers a seller-registerable webhook on their own account in the same way.
+
+What that means in practice:
+
+- **A bank paybill on M-Pesa** (Equity's 247247, KCB's 522522 and the like) is
+  somebody else's shortcode. The seller does not own it, so they cannot register
+  callbacks against it, and nothing arrives on its own.
+- **A direct bank transfer** has no callback at all.
+
+So bank payments are recorded at the counter — which most sellers doing this
+already do, since they are watching each transaction as it happens — or picked
+up afterwards from a statement import, where anything already recorded is
+skipped by its reference. The till says this on the screen rather than leaving
+somebody to work it out.
+
+The honest routes out of this, none of them free: several banks (Equity, KCB,
+Co-operative, NCBA) run developer portals with balance and statement APIs behind
+a corporate account and an approval process — a per-bank integration, not one
+piece of work. Failing that, a nightly statement pull is a much smaller job than
+a real-time one, and would close most of the gap for a seller who reconciles
+daily rather than per-sale.
 
 ## Receipts, and what makes one worth anything
 

@@ -8,12 +8,16 @@
  */
 import { createSeedDatabase } from "../lib/seed";
 import {
+  bargainOn,
+  bargainReport,
+  bargainSuggestions,
   blockers,
   cartTotals,
   cashOutcome,
   canSell,
   sellableCount,
   tenderSuggestions,
+  priceVerdict,
   tillToday,
   toOrderItems,
 } from "../lib/pos";
@@ -211,6 +215,106 @@ console.log("\nthe cart becomes order lines\n");
   expect("carrying only what an order needs", toOrderItems(lines), [
     { productId: "a", name: "Mandazi", qty: 2, price: 250 },
   ]);
+}
+
+console.log("\nbargaining\n");
+
+{
+  // A 14,500 phone that left at 13,000, and a head wrap sold at the asking price.
+  const lines: CartLine[] = [
+    { productId: "phone", name: "Redmi 13C", price: 13000, listPrice: 14500, qty: 1 },
+    { productId: "wrap", name: "Satin Head Wrap", price: 900, qty: 2 },
+  ];
+  const b = bargainOn(lines);
+  expect("the shelf total", b.listed, 16300);
+  expect("what was actually agreed", b.agreed, 14800);
+  expect("what was given away", b.given, 1500);
+  check("and it is marked as negotiated", b.negotiated);
+
+  // The cart totals must follow the agreed price, or the receipt shows a
+  // number the customer never paid.
+  expect("the bill is the agreed price", cartTotals(lines).total, 14800);
+
+  const none: CartLine[] = [{ productId: "wrap", name: "Wrap", price: 900, qty: 1 }];
+  expect("nothing given away when nobody haggled", bargainOn(none).given, 0);
+  check("and it is not marked negotiated", !bargainOn(none).negotiated);
+}
+
+{
+  // Only the agreed price reaches the order; the shelf price rides along so
+  // the books can say later what the haggling cost.
+  const items = toOrderItems([
+    { productId: "phone", name: "Redmi 13C", price: 13000, listPrice: 14500, qty: 1 },
+    { productId: "wrap", name: "Wrap", price: 900, listPrice: 900, qty: 1 },
+  ]);
+  expect("the agreed price is the price", items[0]!.price, 13000);
+  expect("with the shelf price beside it", items[0]!.listPrice, 14500);
+  check("and no list price when it was not bargained", items[1]!.listPrice === undefined);
+}
+
+console.log("\nwhat a negotiated price does to the money\n");
+
+expect("a healthy price says nothing", priceVerdict(13000, 9000), { level: "fine" });
+{
+  const thin = priceVerdict(9500, 9000);
+  expect("a thin one says what is left", thin.level, "thin");
+  check("naming the number", thin.level !== "fine" && thin.message.includes("500"), thin);
+
+  const under = priceVerdict(8500, 9000);
+  expect("below cost is called that", under.level, "under_cost");
+  check("with the shortfall named", under.level !== "fine" && under.message.includes("500"), under);
+  // Never refuses: a seller clearing old stock at a loss is making a decision,
+  // and a till that blocks them is a till they work around.
+  check("and it is a warning, not a refusal", under.level === "under_cost");
+}
+expect("with no cost recorded there is nothing to judge", priceVerdict(500), { level: "fine" });
+
+console.log("\nthe prices a seller is likely to settle on\n");
+
+{
+  const big = bargainSuggestions(45000);
+  expect("high value moves in thousands", big, [44000, 43000, 42000]);
+  const mid = bargainSuggestions(14500);
+  expect("mid value moves in five hundreds", mid, [14000, 13500, 13000]);
+  const small = bargainSuggestions(900);
+  expect("small value moves in fifties", small, [850, 800, 750]);
+  check("nothing suggested below half price", bargainSuggestions(100).every((p) => p >= 50));
+  expect("nothing to suggest on a free item", bargainSuggestions(0), []);
+}
+
+console.log("\nwhat the haggling cost this month\n");
+
+{
+  const order = (id: string, items: { name: string; price: number; listPrice?: number; qty: number }[], daysAgo: number) => ({
+    id, code: `#${id}`, customerId: "", deliveryFee: 0, discount: 0,
+    status: "delivered" as const, paymentStatus: "paid" as const, channel: "walk-in" as const,
+    address: "", createdAt: new Date(Date.now() - daysAgo * 86400000).toISOString(),
+    items: items.map((i) => ({ productId: i.name, name: i.name, qty: i.qty, price: i.price, ...(i.listPrice ? { listPrice: i.listPrice } : {}) })),
+  });
+
+  const db = world([product()], {
+    orders: [
+      order("a", [{ name: "Redmi 13C", price: 13000, listPrice: 14500, qty: 1 }], 2),
+      order("b", [{ name: "Redmi 13C", price: 13500, listPrice: 14500, qty: 1 }], 5),
+      order("c", [{ name: "Satin Head Wrap", price: 850, listPrice: 900, qty: 1 }], 6),
+      order("d", [{ name: "Satin Head Wrap", price: 900, qty: 3 }], 7),
+      // Outside the window: last quarter's haggling is not this month's problem.
+      order("e", [{ name: "Redmi 13C", price: 11000, listPrice: 14500, qty: 1 }], 90),
+    ],
+  });
+
+  const r = bargainReport(db, 30);
+  expect("three of four recent sales were negotiated", r.sales, 3);
+  expect("out of four in the window", r.total, 4);
+  expect("and the total given away", r.given, 2550);
+  check("older sales are left out", r.given === 2550, r.given);
+  check("the phone is the worst offender", r.worst[0]!.name === "Redmi 13C", r.worst);
+  expect("talked down twice", r.worst[0]!.times, 2);
+  expect("costing this much", r.worst[0]!.given, 2500);
+  console.log(
+    `     ${Math.round(r.rate * 100)}% of sales negotiated · KES ${r.given.toLocaleString()} given away · ` +
+      `${(r.averageCut * 100).toFixed(1)}% average cut`,
+  );
 }
 
 console.log("\nthe day at the till\n");

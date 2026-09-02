@@ -140,6 +140,8 @@ export interface ReceiptLine {
   qty: number;
   unitPrice: number;
   total: number;
+  /** What it was listed at, when the customer talked it down. */
+  listPrice?: number;
 }
 
 export interface Receipt {
@@ -160,6 +162,14 @@ export interface Receipt {
   deliveryCharged: number;
   /** Paid straight to the rider at the door, and therefore not receipted here. */
   riderPaidSeparately: number;
+  /**
+   * What came off the asking price.
+   *
+   * Shown because the customer negotiated it and will want to see it, and
+   * because a receipt quietly dropping the number invites the question of
+   * whether the right price was charged at all.
+   */
+  bargained: number;
   /** What this receipt is for: money that reached the business. */
   total: number;
   paid: number;
@@ -203,6 +213,9 @@ export function buildReceipt(db: Database, payment: Payment): Receipt {
         qty: item.qty,
         unitPrice: item.price,
         total: item.price * item.qty,
+        ...(item.listPrice !== undefined && item.listPrice > item.price
+          ? { listPrice: item.listPrice }
+          : {}),
       }))
     : [];
 
@@ -235,6 +248,11 @@ export function buildReceipt(db: Database, payment: Payment): Receipt {
   const total = order ? goodsTotal(order) + deliveryCharged : payment.amount;
   const paid = payment.amount;
 
+  const bargained = lines.reduce(
+    (sum, line) => sum + (line.listPrice ? (line.listPrice - line.unitPrice) * line.qty : 0),
+    0,
+  );
+
   const proof = proofFor(payment, db.business);
   const code = proof.checkable ? proof.code : undefined;
 
@@ -252,6 +270,7 @@ export function buildReceipt(db: Database, payment: Payment): Receipt {
     discount,
     deliveryCharged,
     riderPaidSeparately,
+    bargained,
     total,
     paid,
     balance: Math.max(0, total - paid),
@@ -286,6 +305,7 @@ export function receiptText(receipt: Receipt) {
     ...rows,
   ];
 
+  if (receipt.bargained > 0) parts.push(`You saved — ${money(receipt.bargained)}`);
   if (receipt.discount > 0) parts.push(`Discount — ${money(-receipt.discount)}`);
   if (receipt.deliveryCharged > 0) parts.push(`Delivery — ${money(receipt.deliveryCharged)}`);
 

@@ -107,6 +107,7 @@ export async function tillStatus(tenantId: string, baseUrl: string) {
     registered_at: string | null;
     last_event_at: string | null;
     consumer_key_enc: string;
+    passkey_enc: string | null;
   }>(`select * from mpesa_accounts where tenant_id = $1`, [tenantId]);
 
   const account = rows[0];
@@ -121,6 +122,9 @@ export async function tillStatus(tenantId: string, baseUrl: string) {
     lastEventAt: account.last_event_at,
     // Enough to confirm the right key was entered, not enough to use it.
     consumerKey: maskSecret(decrypt(account.consumer_key_enc)),
+    /* Whether the till can push a prompt to a phone. Reported rather than
+     * discovered by trying, so the counter never offers a button that fails. */
+    canPrompt: Boolean(account.passkey_enc),
     confirmationUrl: `${baseUrl}/mpesa/c2b/${account.callback_secret}/confirmation`,
     validationUrl: `${baseUrl}/mpesa/c2b/${account.callback_secret}/validation`,
   };
@@ -133,8 +137,10 @@ async function credentialsFor(tenantId: string) {
     consumer_key_enc: string;
     consumer_secret_enc: string;
     passkey_enc: string | null;
+    callback_secret: string;
   }>(
-    `select shortcode, environment, consumer_key_enc, consumer_secret_enc, passkey_enc
+    `select shortcode, environment, consumer_key_enc, consumer_secret_enc, passkey_enc,
+            callback_secret
        from mpesa_accounts where tenant_id = $1`,
     [tenantId],
   );
@@ -146,6 +152,7 @@ async function credentialsFor(tenantId: string) {
     consumerKey: decrypt(account.consumer_key_enc),
     consumerSecret: decrypt(account.consumer_secret_enc),
     passkey: account.passkey_enc ? decrypt(account.passkey_enc) : null,
+    callbackSecret: account.callback_secret,
   };
 }
 
@@ -225,6 +232,7 @@ export async function registerCallbacks(tenantId: string, baseUrl: string) {
 export async function requestPayment(
   tenantId: string,
   input: { phone: string; amount: number; reference: string; description?: string },
+  baseUrl: string,
 ) {
   const creds = await credentialsFor(tenantId);
   if (!creds.passkey) {
@@ -254,7 +262,16 @@ export async function requestPayment(
       // The order code, so the confirmation that follows can be matched to it.
       AccountReference: input.reference.slice(0, 12),
       TransactionDesc: (input.description ?? input.reference).slice(0, 13),
-      CallBackURL: "",
+      /* Daraja requires somewhere to report the outcome, and an empty string
+       * is not somewhere: the request is accepted and the answer is thrown
+       * away, leaving a counter staring at a screen that will never change.
+       *
+       * The money itself still arrives by the C2B confirmation, which is
+       * registered separately and deduped on the receipt code. This callback
+       * carries the other half — whether the customer entered their PIN,
+       * cancelled, or let it time out — which is what the person at the
+       * counter is actually waiting to know. */
+      CallBackURL: `${baseUrl}/mpesa/stk/${creds.callbackSecret}`,
     }),
   });
 
@@ -439,6 +456,55 @@ export async function handleConfirmation(
   };
 }
 
+export interface StkResult {
+  status: "accepted" | "declined" | "unknown";
+  /** Safaricom's own words, which are usually the clearest thing to show. */
+  detail: string;
+  receipt?: string;
+}
+
+/**
+ * What happened after the prompt appeared on the customer's phone.
+ *
+ * ResultCode 0 means they entered their PIN and the money moved; everything
+ * else is a reason it did not — cancelled, wrong PIN, no balance, timed out.
+ * Safaricom's own wording is passed through rather than reworded, because at a
+ * counter "Request cancelled by user" settles an argument and a paraphrase
+ * invites one.
+ *
+ * This does not post the payment. The C2B confirmation does that, deduped on
+ * the receipt code, so a customer who pays cannot be charged twice by the two
+ * callbacks racing.
+ */
+export async function handleStkResult(
+  secret: string,
+  payload: Record<string, unknown>,
+): Promise<StkResult> {
+  const { rows } = await query<{ tenant_id: string }>(
+    `select tenant_id from mpesa_accounts where callback_secret = $1`,
+    [secret],
+  );
+  if (!rows.length) return { status: "unknown", detail: "Unknown callback address." };
+
+  const body = payload.Body as { stkCallback?: Record<string, unknown> } | undefined;
+  const callback = body?.stkCallback;
+  if (!callback) return { status: "unknown", detail: "No STK result in the payload." };
+
+  const code = Number(callback.ResultCode);
+  const detail = String(callback.ResultDesc ?? "").trim() || "No reason given.";
+
+  const items =
+    (callback.CallbackMetadata as { Item?: { Name: string; Value?: unknown }[] } | undefined)
+      ?.Item ?? [];
+  const receipt = items.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
+
+  return {
+    status: code === 0 ? "accepted" : "declined",
+    detail,
+    receipt: receipt ? String(receipt) : undefined,
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Working out which order it was for
  * ------------------------------------------------------------------ */
@@ -508,12 +574,30 @@ async function findOrder(
       const phoneMatches = byPhone.has(String(order.customerId ?? ""));
       const refMatches = Boolean(ref && code && ref === code);
 
+      /* Paying less than the order says is not a mystery here — it is a
+       * bargain. The shelf price is an opening position in this market, and a
+       * customer who talked a 14,500 phone down to 13,000 and then paid pays
+       * 13,000. Without this, every negotiated sale arrives as an unmatched
+       * payment and the seller reconciles it by hand, which is precisely the
+       * work the matcher exists to remove.
+       *
+       * Bounded on both sides. Below half the asking price it is more likely a
+       * deposit or a different order altogether, and treating those as bargains
+       * would settle the wrong thing. Above the total it is not a bargain at
+       * all. And it never settles anything by itself: a short payment against
+       * an order is exactly the case where a human should look. */
+      const shortfall = total - hint.amount;
+      const bargained =
+        !amountMatches && shortfall > 0 && hint.amount >= total * 0.5;
+
       let confidence = 0;
       if (refMatches && amountMatches) confidence = 0.98;
       else if (refMatches) confidence = 0.92;
       else if (phoneMatches && amountMatches) confidence = 0.9;
+      else if (phoneMatches && bargained) confidence = 0.72;
       else if (phoneMatches) confidence = 0.6;
       else if (amountMatches) confidence = 0.45;
+      else if (bargained && refMatches) confidence = 0.88;
 
       if (confidence === 0) continue;
 
@@ -524,6 +608,11 @@ async function findOrder(
       if (refMatches) reasons.push("The order number was entered on M-Pesa");
       if (phoneMatches) reasons.push("Paid from this customer's number");
       if (amountMatches) reasons.push("Exact amount");
+      if (bargained) {
+        reasons.push(
+          `${money(shortfall)} less than the order — bargained down?`,
+        );
+      }
 
       // A payment usually follows its order within a few days; a month-old
       // order matching only on amount is more likely a coincidence.
@@ -555,8 +644,23 @@ async function findOrder(
       if (ties > 1) return null;
     }
 
+    /* Two open orders this customer could plausibly have bargained down are
+     * indistinguishable from a short payment alone, so neither is offered. */
+    if (best && best.reasons.some((r) => r.includes("bargained"))) {
+      const plausible = rows.filter((row) => {
+        const t = orderTotal(row.doc);
+        return hint.amount < t && hint.amount >= t * 0.5;
+      }).length;
+      if (plausible > 1) return null;
+    }
+
     return best && best.confidence >= 0.45 ? best : null;
   });
+}
+
+/** Shillings, for a reason the seller reads on their own phone. */
+function money(value: number) {
+  return `KES ${Math.round(value).toLocaleString("en-KE")}`;
 }
 
 /**

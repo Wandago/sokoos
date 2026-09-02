@@ -20,6 +20,7 @@ import {
   NoMpesaAccount,
   connectTill,
   handleConfirmation,
+  handleStkResult,
   registerCallbacks,
   requestPayment,
   tillStatus,
@@ -86,6 +87,7 @@ const PUBLIC_PATHS = [
    * the URL is what identifies the seller, and the payload's shortcode is
    * checked against that seller's own before anything is written. */
   /^\/mpesa\/c2b\/[^/]+\/(confirmation|validation)$/,
+  /^\/mpesa\/stk\/[^/]+$/,
 ];
 
 app.use("*", async (c, next) => {
@@ -250,11 +252,11 @@ tenantScoped.post("/mpesa/request", async (c) => {
     return c.json({ error: "A phone number, an amount and an order reference are needed." }, 400);
   }
   return c.json(
-    await requestPayment(c.get("tenantId"), {
-      phone: body.phone,
-      amount: body.amount,
-      reference: body.reference,
-    }),
+    await requestPayment(
+      c.get("tenantId"),
+      { phone: body.phone, amount: body.amount, reference: body.reference },
+      publicBase(c),
+    ),
   );
 });
 
@@ -278,6 +280,21 @@ app.route("/", authed);
  * should arrive whatever is wrong on our side, and anything we could not
  * understand is recoverable from the statement importer later.
  */
+/* Whether the customer entered their PIN. Answers 0 whatever happened, for the
+ * same reason the confirmation does: a non-zero answer makes Safaricom retry a
+ * result that is already final. */
+app.post("/mpesa/stk/:secret", async (c) => {
+  try {
+    const result = await handleStkResult(c.req.param("secret"), await c.req.json());
+    if (result.status !== "accepted") {
+      console.warn(`[mpesa] stk ${result.status}: ${result.detail}`);
+    }
+  } catch (error) {
+    console.error("[mpesa] stk result failed", error);
+  }
+  return c.json({ ResultCode: 0, ResultDesc: "Accepted" });
+});
+
 app.post("/mpesa/c2b/:secret/validation", async (c) =>
   c.json({ ResultCode: 0, ResultDesc: "Accepted" }),
 );

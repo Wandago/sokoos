@@ -432,6 +432,59 @@ async function main() {
   const twinA = stillUnpaid.records.find((r) => r.id === "ord_twin_a");
   eq("so neither order is wrongly settled", (twinA!.doc as Doc).paymentStatus, "unpaid");
 
+  /* ---- A price that was talked down ------------------------------------
+   *
+   * The shelf price is an opening position in this market. A customer who
+   * bargained a 14,500 phone to 13,000 and paid must not arrive as a mystery
+   * for the seller to reconcile by hand. */
+  await push(shop, randomUUID(), [
+    {
+      kind: "order", id: "ord_bargain",
+      doc: {
+        id: "ord_bargain", code: "#8801", customerId: "cus_grace",
+        items: [{ productId: "p", name: "Redmi 13C", qty: 1, price: 14500 }],
+        deliveryFee: 0, deliverySettlement: "customer_pays_rider",
+        discount: 0, status: "confirmed", paymentStatus: "unpaid",
+        createdAt: "2026-08-31T07:00:00.000Z",
+      },
+      updatedAt: "2026-08-31T07:00:00.000Z",
+    },
+  ]);
+
+  const haggled = await handleConfirmation(secret, {
+    TransactionType: "Pay Bill", TransID: "TGX9BARG01", TransTime: "20260901120000",
+    TransAmount: "13000.00", BusinessShortCode: "174379", BillRefNumber: "",
+    MSISDN: "254722418903", FirstName: "GRACE", LastName: "WAIRIMU",
+  });
+  eq("a bargained payment still posts", haggled.status, "posted");
+  eq("and is suggested against the order", haggled.suggestedOrder, "ord_bargain");
+  ok(
+    "but never settles it on its own",
+    haggled.matchedOrder === undefined,
+    haggled,
+  );
+
+  const withReason = await pull(shop, 0);
+  const bargainPay = withReason.records.find((r) => r.id === "pay_mpesa_TGX9BARG01");
+  const bargainWhy = (bargainPay!.doc as Doc).matchReasons as string[];
+  ok(
+    "the reason names the shortfall in the seller's words",
+    bargainWhy.some((r) => r.includes("1,500") && r.includes("bargained")),
+    bargainWhy,
+  );
+
+  // Half the asking price is a deposit or a different order, not a haggle.
+  const tooLittle = await handleConfirmation(secret, {
+    TransactionType: "Pay Bill", TransID: "TGX9BARG02", TransTime: "20260901121000",
+    TransAmount: "3000.00", BusinessShortCode: "174379", BillRefNumber: "",
+    MSISDN: "254722418903", FirstName: "GRACE", LastName: "WAIRIMU",
+  });
+  ok(
+    "a payment far below the order is not called a bargain",
+    !(tooLittle.suggestedOrder === "ord_bargain" && tooLittle.confidence === 0.72),
+    tooLittle,
+  );
+
   const unmatched = await api("GET", `/tenants/${shop}/mpesa/unmatched`, undefined, amina.token);
   ok("and it is listed for a human to sort out", unmatched.body.some((e: { trans_id: string }) => e.trans_id === "TFB7M09PQR"));
 

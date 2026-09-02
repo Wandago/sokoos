@@ -21,10 +21,27 @@ import { serialStockCount } from "./serials";
 export interface CartLine {
   productId: string;
   name: string;
+  /**
+   * What was actually agreed, per unit.
+   *
+   * Not the price on the shelf. In most of this market the shelf price is an
+   * opening position — a 14,500 phone leaves at 13,000 and everyone considers
+   * that a normal Tuesday. Storing the list price and calling the difference a
+   * "discount" applied afterwards gets two things wrong at once: the receipt
+   * shows a number the customer did not pay, and the payment that arrives never
+   * matches the order it belongs to.
+   *
+   * So the agreed price is the price. What the shelf said is kept beside it,
+   * because the gap between the two is worth knowing.
+   */
   price: number;
+  /** What the product is listed at, when it differs from what was agreed. */
+  listPrice?: number;
   qty: number;
   /** Which exact units are leaving, for serialised stock. */
   serialIds?: string[];
+  /** Unit cost, carried so the till can say when a haggle has gone too far. */
+  cost?: number;
 }
 
 export interface CartTotals {
@@ -47,12 +64,112 @@ export function cartTotals(lines: CartLine[], discount = 0): CartTotals {
   };
 }
 
+/* ------------------------------------------------------------------ *
+ * Bargaining
+ * ------------------------------------------------------------------ */
+
+export interface Bargain {
+  /** What the shelf said, in total. */
+  listed: number;
+  /** What was agreed. */
+  agreed: number;
+  /** How much was given away. Zero when nothing was negotiated. */
+  given: number;
+  /** As a share of the listed price, for a seller judging whether it was much. */
+  percent: number;
+  negotiated: boolean;
+}
+
+/** What the haggling on this cart came to. */
+export function bargainOn(lines: CartLine[]): Bargain {
+  const listed = lines.reduce((sum, l) => sum + (l.listPrice ?? l.price) * l.qty, 0);
+  const agreed = lines.reduce((sum, l) => sum + l.price * l.qty, 0);
+  const given = Math.max(0, listed - agreed);
+  return {
+    listed,
+    agreed,
+    given,
+    percent: listed > 0 ? given / listed : 0,
+    negotiated: given > 0,
+  };
+}
+
+export type PriceVerdict =
+  | { level: "fine" }
+  | { level: "thin"; margin: number; message: string }
+  | { level: "under_cost"; margin: number; message: string };
+
+/**
+ * What a negotiated price does to the money on this line.
+ *
+ * Never refuses. A seller who has decided to take a loss on a phone to move it
+ * before the model turns over is making a business decision, and a till that
+ * blocks them is a till they will work around. It says the number out loud
+ * instead, at the moment it can still change the answer — which is the whole
+ * value of saying it at all.
+ *
+ * "Thin" is set at a tenth of the price rather than a fixed shilling amount,
+ * because ten percent means something different on a 900 head wrap and a 45,000
+ * television, and only one of those two is worth interrupting somebody for.
+ */
+export function priceVerdict(price: number, cost?: number): PriceVerdict {
+  if (cost === undefined || cost <= 0) return { level: "fine" };
+
+  const margin = price - cost;
+  if (margin < 0) {
+    return {
+      level: "under_cost",
+      margin,
+      message: `That is ${formatShort(Math.abs(margin))} below what it cost you.`,
+    };
+  }
+  if (margin < price * 0.1) {
+    return {
+      level: "thin",
+      margin,
+      message: `Leaves you ${formatShort(margin)} on this one.`,
+    };
+  }
+  return { level: "fine" };
+}
+
+/** Bare number formatting, so this file needs nothing from the UI layer. */
+function formatShort(value: number) {
+  return `KES ${Math.round(value).toLocaleString("en-KE")}`;
+}
+
+/**
+ * The prices a seller is most likely to settle on.
+ *
+ * Haggling in this market moves in round steps, and which step depends on the
+ * size of the number: a hundred off a 900 shilling wrap is a different
+ * conversation from a hundred off a 45,000 television. The suggestions follow
+ * the price rather than being a fixed ladder, so the useful button is always
+ * the one under the thumb.
+ */
+export function bargainSuggestions(listPrice: number): number[] {
+  if (listPrice <= 0) return [];
+  const step =
+    listPrice >= 20000 ? 1000 : listPrice >= 5000 ? 500 : listPrice >= 1500 ? 100 : 50;
+
+  return [1, 2, 3]
+    .map((n) => listPrice - step * n)
+    // Never suggests giving the thing away, and never suggests a price the
+    // seller would have to explain to themselves later.
+    .filter((price) => price >= Math.max(1, listPrice * 0.5));
+}
+
 export function toOrderItems(lines: CartLine[]): OrderItem[] {
   return lines.map((line) => ({
     productId: line.productId,
     name: line.name,
     qty: line.qty,
     price: line.price,
+    // Only carried when it differs, so an ordinary sale does not store a field
+    // that merely repeats the price.
+    ...(line.listPrice !== undefined && line.listPrice !== line.price
+      ? { listPrice: line.listPrice }
+      : {}),
   }));
 }
 
@@ -223,6 +340,98 @@ export function blockers(db: Database, lines: CartLine[]): string[] {
   }
 
   return problems;
+}
+
+/* ------------------------------------------------------------------ *
+ * What the haggling costs
+ * ------------------------------------------------------------------ */
+
+export interface BargainReport {
+  /** Sales where something came off the asking price. */
+  sales: number;
+  /** Every sale in the window, for the share below. */
+  total: number;
+  /** What was given away, in shillings. */
+  given: number;
+  /** The share of sales that involved a negotiation. */
+  rate: number;
+  /** Average shave, as a share of the listed price, on the sales that moved. */
+  averageCut: number;
+  /** The items most often talked down, worst first. */
+  worst: { productId: string; name: string; times: number; given: number; averageCut: number }[];
+}
+
+/**
+ * What bargaining cost over a period.
+ *
+ * Worth surfacing because it is invisible one sale at a time. Two hundred
+ * shillings off a phone feels like nothing at the counter and is the month's
+ * profit by the thirtieth. This is not an argument against haggling — it is how
+ * business is done here — but a seller who knows the number can decide where to
+ * hold, and can price with the negotiation already built in.
+ */
+export function bargainReport(db: Database, days = 30, now = new Date()): BargainReport {
+  const cutoff = +now - days * 86_400_000;
+  const orders = db.orders.filter(
+    (o) => o.status !== "cancelled" && +new Date(o.createdAt) >= cutoff,
+  );
+
+  const byProduct = new Map<
+    string,
+    { productId: string; name: string; times: number; given: number; listed: number }
+  >();
+
+  let given = 0;
+  let listedOnCut = 0;
+  let negotiated = 0;
+
+  for (const order of orders) {
+    let orderGiven = 0;
+    let orderListed = 0;
+
+    for (const item of order.items) {
+      if (item.listPrice === undefined || item.listPrice <= item.price) continue;
+      const cut = (item.listPrice - item.price) * item.qty;
+      orderGiven += cut;
+      orderListed += item.listPrice * item.qty;
+
+      const row = byProduct.get(item.productId) ?? {
+        productId: item.productId,
+        name: item.name,
+        times: 0,
+        given: 0,
+        listed: 0,
+      };
+      row.times += 1;
+      row.given += cut;
+      row.listed += item.listPrice * item.qty;
+      byProduct.set(item.productId, row);
+    }
+
+    if (orderGiven > 0) {
+      negotiated += 1;
+      given += orderGiven;
+      listedOnCut += orderListed;
+    }
+  }
+
+  return {
+    sales: negotiated,
+    total: orders.length,
+    given,
+    rate: orders.length ? negotiated / orders.length : 0,
+    averageCut: listedOnCut ? given / listedOnCut : 0,
+    worst: [...byProduct.values()]
+      .map((row) => ({
+        productId: row.productId,
+        name: row.name,
+        times: row.times,
+        given: row.given,
+        averageCut: row.listed ? row.given / row.listed : 0,
+      }))
+      .sort((a, b) => b.given - a.given)
+      .slice(0, 5),
+  };
 }
 
 /* ------------------------------------------------------------------ *

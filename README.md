@@ -631,8 +631,19 @@ answer rather than a spinner.
 
 **Sign-in is a phone number and a code.** No password anywhere — the codes are
 hashed at rest, so are session tokens, and a code is consumed the first time it
-is used. Postgres row-level security scopes every tenant's rows in the database
-itself, not only in the queries above it.
+is used.
+
+**Every tenant-scoped transaction runs without the privilege to see anything
+else.** Row-level security policies existed from the start and did nothing: the
+service connected as the owner, which on most installs is a superuser, and a
+superuser bypasses RLS unconditionally — `force row level security` applies to
+the owner, not to a superuser. Every catalogue view said enabled; nothing was
+enforced. Each transaction now drops to an unprivileged role for its duration,
+and a test writes to two businesses and proves neither can read the other.
+
+The database is any Postgres. Supabase is a connection string away — see
+`server/README.md`, and run `npm run db:check` against it, which proves the
+isolation above rather than assuming it.
 
 **M-Pesa is read, never held.** A seller connects their *own* Paybill or Till.
 The customer pays that shortcode directly, the money lands in the seller's

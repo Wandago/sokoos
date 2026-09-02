@@ -42,6 +42,26 @@ explain to a seller.
 
 ## Tenant isolation
 
+**This was broken, and that is worth reading before trusting it.** The policies
+below were written against a role without BYPASSRLS, on the stated assumption
+that the application connects as that role. It never did — it connected as the
+owner, a superuser on most installs, and a superuser bypasses row-level
+security unconditionally. `force row level security` does not help: it makes
+policies apply to the *owner*, not to a superuser.
+
+So the isolation was decorative. `pg_policies` listed it, `pg_class` reported
+it enabled and forced, and a query that forgot its tenant clause would have
+returned another business's books. Nothing leaked, because the application
+always did scope its queries — which is precisely the problem. A protection
+that silently is not there is indistinguishable from one that is, until the day
+it is needed.
+
+`withTenant` now issues `set local role sokoos_app` after setting the tenant,
+dropping privileges for the transaction and reverting on commit. `npm run
+db:check` proves it against any database by writing to two tenants and trying
+to read across; the suite asserts the same on every run.
+
+
 Every read and write is scoped twice. The application layer only hands out a
 database client through `withTenant`, and Postgres row-level security refuses
 anything that arrives without a matching tenant. The second one exists because
@@ -140,6 +160,39 @@ build does not have.
 **Admin authorization.** The console's staff sign-in is still navigation rather
 than authorization. The `admin_audit` table exists, ready, and is not yet
 written to.
+
+## Pointing it at Supabase
+
+Supabase is managed Postgres, which is exactly what this service wants — so it
+is a connection string, not a rewrite. Nothing in `src/` knows or cares.
+
+1. Create a project at supabase.com. Note the database password; it is not your
+   account password and it is shown once.
+2. **Settings → Database → Connection string → Transaction pooler.** Take that
+   one, not the direct connection: on the free tier the direct host is
+   IPv6-only, which fails from most laptops and a good many hosts. The pooler
+   string has `pooler.supabase.com` in it.
+3. Check it before trusting it with anything:
+
+```bash
+cd server
+DATABASE_URL="postgres://postgres.abcxyz:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres" \
+  npm run db:check
+```
+
+That connects, applies the migrations, and then does the part worth doing: it
+creates two businesses, writes a record to each, and tries to read one from
+inside the other. If that read returns anything it fails loudly — because
+row-level security failing silently is the whole risk, and a policy that did
+not apply looks exactly like one that did.
+
+TLS is turned on automatically for any non-local host. For production, download
+Supabase's certificate (Database → SSL Configuration) and set `DATABASE_CA`, so
+the connection is verified rather than merely encrypted.
+
+**Region matters more than it looks.** Every sync push is a transaction, so a
+database on another continent turns a fast phone into a slow one. `db:check`
+prints the round trip and says so when it is far.
 
 ## Deploying it
 

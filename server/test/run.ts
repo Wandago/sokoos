@@ -10,7 +10,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { app } from "../src/index.js";
-import { closePool, query } from "../src/db/pool.js";
+import { closePool, query, withTenant } from "../src/db/pool.js";
 import { migrate } from "../src/db/migrate.js";
 import { normalisePhone, InvalidPhone, maskPhone } from "../src/lib/phone.js";
 import { pull, push } from "../src/lib/sync.js";
@@ -503,6 +503,46 @@ async function main() {
   eq("even for a payload it cannot use", junk.body.ResultCode, 0);
   const validation = await api("POST", `/mpesa/c2b/${secret}/validation`, { TransID: "X" });
   eq("validation never blocks a customer's payment", validation.body.ResultCode, 0);
+
+  /* ---------------------------------------------------------------- */
+  section("The database refuses what the code forgets");
+
+  /* Row-level security as it was actually found: enabled, forced, listed in
+   * every catalogue view — and bypassed by every query, because the service
+   * connected as a superuser and a superuser ignores RLS unconditionally.
+   *
+   * The application always did scope its queries, so nothing leaked. That is
+   * exactly why this needs a test rather than a policy: the protection is for
+   * the day a query forgets, and a protection that silently is not there looks
+   * identical to one that is until that day arrives. */
+  {
+    const forged = await withTenant(shop, (client) =>
+      client
+        .query("select id from records where tenant_id = $1", [brianShop.body.id])
+        .then((r) => r.rows),
+    );
+    eq("one business cannot read another's records", forged.length, 0);
+
+    let refused = false;
+    try {
+      await withTenant(shop, (client) =>
+        client.query(
+          `insert into records (tenant_id, kind, id, doc, updated_at, seq)
+           values ($1, 'order', 'ord_forged', '{}', now(), 9999)`,
+          [brianShop.body.id],
+        ),
+      );
+    } catch {
+      refused = true;
+    }
+    ok("nor write into it", refused);
+
+    // Proof the check above is not passing because the tenant is simply empty.
+    const own = await withTenant(shop, (client) =>
+      client.query("select id from records limit 1").then((r) => r.rows),
+    );
+    ok("while still seeing its own", own.length === 1, own);
+  }
 
   /* ---------------------------------------------------------------- */
   section("Sessions end");

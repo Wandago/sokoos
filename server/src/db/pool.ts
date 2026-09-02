@@ -63,13 +63,36 @@ function sslFor(url: string): pg.ClientConfig["ssl"] {
   return { rejectUnauthorized: false };
 }
 
+/* A serverless instance is not a server.
+ *
+ * It handles one request at a time and is then frozen mid-memory, so a pool of
+ * ten connections means nine held open by a process that is not running —
+ * multiplied by every warm instance, which is how a small amount of traffic
+ * exhausts a database's connection limit while doing almost no work.
+ *
+ * One connection, released quickly. The multiplexing that a pool would have
+ * done is Supabase's Supavisor doing it instead, which is what a transaction
+ * pooler is for. */
+const serverless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
 export const pool = new pg.Pool({
   connectionString,
   ssl: sslFor(connectionString),
-  max: Number(process.env.PG_POOL_MAX ?? 10),
-  idleTimeoutMillis: 30_000,
-  // A query that has not answered in ten seconds is not going to.
+  max: Number(process.env.PG_POOL_MAX ?? (serverless ? 1 : 10)),
+  idleTimeoutMillis: serverless ? 5_000 : 30_000,
+  // A query that has not answered in ten seconds is not going to. Matches the
+  // function's own timeout: a request that outlives its query has nothing left
+  // to wait for.
   statement_timeout: 10_000,
+});
+
+/* An idle client that the database hangs up on — a pooler recycling it, a
+ * deploy, a network blip — emits an error with nothing listening, and an
+ * unhandled 'error' event on an EventEmitter takes the process down. On a
+ * container that is a restart; on serverless it is a failed request for
+ * whoever arrives next. */
+pool.on("error", (error) => {
+  console.error("[db] idle client error", error.message);
 });
 
 export type Client = pg.PoolClient;

@@ -83,7 +83,29 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -t sokoos-api server
 
-      # The failure this guards against is a deploy that comes up against a
+      # The serverless path imports the app without ever starting a server. If
+      # index.ts regains a side effect that binds a port — which is exactly the
+      # bug that splitting serve.ts out was meant to prevent — this catches it.
+      - name: The app imports without starting a server
+        working-directory: server
+        run: |
+          npm ci
+          cat > import-check.ts <<'TS'
+          import { handle } from "hono/vercel";
+          import { app } from "./src/index.js";
+          async function main() {
+            if (typeof handle(app) !== "function") throw new Error("no handler built");
+            const res = await app.fetch(new Request("http://x/health"));
+            if (res.status !== 200) throw new Error(`health said ${res.status}`);
+            console.log("imported cleanly, health 200");
+            process.exit(0);
+          }
+          main();
+          TS
+          DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/sokoos_fresh \
+            npx tsx import-check.ts
+
+      # The failure these guard against is a deploy that comes up against a
       # fresh database with no tables, or one missing a variable nobody checked
       # until the first payment. Both have to be caught here rather than in
       # production, so the image is actually run.

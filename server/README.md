@@ -194,7 +194,56 @@ the connection is verified rather than merely encrypted.
 database on another continent turns a fast phone into a slow one. `db:check`
 prints the round trip and says so when it is far.
 
-## Deploying it
+## Deploying it on Vercel
+
+Two projects from one repository. The PWA is a static export and the API is a
+function; they have different build commands and different environment
+variables, so they are different projects rather than one with a compromise in
+the middle.
+
+**The PWA** — import the repo, leave the root directory alone. Vercel detects
+Next.js and serves the static export. One variable:
+
+| Variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | The API project's URL, e.g. `https://sokoos-api.vercel.app` |
+
+It is baked in at build time, so changing it needs a redeploy. With it unset
+the app still works — local-first, no sync — which is a real state, not a
+broken one.
+
+**The API** — add a second project from the same repo with **Root Directory:
+`server`**. `vercel.json` there does the rest: every path rewrites to one
+function, and migrations run once per deploy from the build command.
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Supabase **transaction pooler** string (port 6543) |
+| `ENCRYPTION_KEY` | `openssl rand -base64 32` |
+| `PUBLIC_URL` | This project's own URL — Safaricom's callbacks are built from it |
+| `ALLOWED_ORIGINS` | The PWA's URL |
+| `NODE_ENV` | `production` |
+
+Set `DATABASE_URL` for the Build environment too, not only Runtime: the build
+command is what applies the migrations, and a failing migration should fail the
+deploy rather than leave a live function expecting a column that is not there.
+
+**Why the pooler and not the direct connection.** A function handles one
+request and is then frozen mid-memory, so a pool of ten connections means nine
+held open by a process that is not running — times every warm instance. That is
+how modest traffic exhausts a database while doing almost no work. The pool
+drops to a single connection when it detects a serverless host and lets
+Supabase's Supavisor do the multiplexing, which is what a transaction pooler is
+for. Transaction mode is also why `set local role` still works: it is scoped to
+the transaction, not the session.
+
+**What this has not proved.** Everything above is verified locally — the app
+imports and serves without binding a port, the handler builds, migrations apply
+to an empty database, isolation holds. The first real deploy is still the first
+real deploy. If the function route gives trouble, the Dockerfile in this
+directory is the tested fallback and runs anywhere that takes a container.
+
+## Deploying it as a container
 
 The image builds from this directory and runs on any host that takes a
 container. Everything it needs is in the environment; see `.env.example`.

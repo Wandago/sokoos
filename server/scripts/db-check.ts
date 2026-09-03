@@ -34,6 +34,49 @@ const check = (label: string, passed: boolean, detail?: unknown) => {
   }
 };
 
+/**
+ * Which of Supabase's three connection strings this is.
+ *
+ * Their dashboard has moved this control more than once and offers all three
+ * side by side, so the reliable way to tell them apart is the shape of the
+ * string itself rather than where in the UI it was copied from:
+ *
+ *   pooler host + port 6543  → transaction pooler, what serverless wants
+ *   pooler host + port 5432  → session pooler, IPv4 and workable
+ *   db.<ref>.supabase.co     → direct, IPv6-only on the free tier
+ *
+ * Said before connecting rather than after failing, because "ENETUNREACH" is a
+ * confusing way to learn you picked the wrong tab.
+ */
+function describe(url: string): string {
+  let host = "";
+  let port = "";
+  try {
+    const parsed = new URL(url);
+    host = parsed.hostname;
+    port = parsed.port;
+  } catch {
+    return "\x1b[33mThat does not parse as a connection string.\x1b[0m";
+  }
+
+  if (host.endsWith("pooler.supabase.com")) {
+    return port === "6543"
+      ? "Supabase transaction pooler — the right one for serverless."
+      : `Supabase session pooler (port ${port}). Workable, but the transaction pooler on 6543 suits a function better.`;
+  }
+
+  if (host.endsWith("db.supabase.co") || /^db\..*\.supabase\.co$/.test(host)) {
+    return (
+      "\x1b[33mThis is Supabase's DIRECT connection, which is IPv6-only on the free\n" +
+      "     tier and will usually fail. Look for the string with `pooler.supabase.com`\n" +
+      "     in it instead.\x1b[0m"
+    );
+  }
+
+  if (host === "localhost" || host === "127.0.0.1") return "Local Postgres.";
+  return `Host ${host}${port ? `:${port}` : ""}.`;
+}
+
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -43,7 +86,8 @@ async function main() {
 
   // Never print the password back at somebody who may be sharing their screen.
   const shown = url.replace(/:\/\/([^:]+):[^@]+@/, "://$1:••••@");
-  console.log(`\nChecking ${shown}\n`);
+  console.log(`\nChecking ${shown}`);
+  console.log(`     ${describe(url)}\n`);
 
   step("Connecting");
   const started = Date.now();

@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmSheet } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { TillCard } from "@/components/mpesa/till-card";
+import { SyncEnroll } from "@/components/sync-enroll";
 import { useToast } from "@/components/ui/toast";
 import { useTour } from "@/components/product-tour";
 import { useStore } from "@/lib/store";
@@ -229,6 +230,9 @@ function SettingsScreen() {
           </Button>
         </div>
       </Card>
+
+      <SectionTitle>Cloud sync</SectionTitle>
+      <SyncEnroll />
 
       <SectionTitle>M-Pesa</SectionTitle>
       <TillCard tillNumber={db.business.tillNumber} />

@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppFrame } from "@/components/app-frame";
 import { StoreProvider } from "@/lib/store";
 import { ToastProvider } from "@/components/ui/toast";
+import { TourProvider } from "@/components/product-tour";
 import { ServiceWorker } from "@/components/service-worker";
 
 const body = Inter({
@@ -69,7 +70,9 @@ export default function RootLayout({
       <body className={`${body.variable} ${display.variable} antialiased`}>
         <StoreProvider>
           <ToastProvider>
-            <AppFrame>{children}</AppFrame>
+            <TourProvider>
+              <AppFrame>{children}</AppFrame>
+            </TourProvider>
           </ToastProvider>
         </StoreProvider>
         <ServiceWorker />

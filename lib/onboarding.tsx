@@ -10,8 +10,7 @@ import {
   SpotTill,
   SpotVoice,
 } from "@/components/spot";
-
-export type CardTheme = "forest" | "lime" | "cream";
+import type { DeckTone } from "@/components/ui/deck";
 
 export interface OnboardingCard {
   id: string;
@@ -19,40 +18,9 @@ export interface OnboardingCard {
   tags: string[];
   headline: string;
   body: string;
-  theme: CardTheme;
+  theme: Extract<DeckTone, "forest" | "lime" | "cream">;
   Spot: typeof SpotAllInOne;
 }
-
-/** Card surfaces. Lime always carries ink; forest always carries paper. */
-export const themes: Record<
-  CardTheme,
-  { card: string; text: string; muted: string; chip: string; dot: string; panel: string }
-> = {
-  forest: {
-    card: "bg-forest-900 text-white",
-    text: "text-white",
-    muted: "text-forest-200",
-    chip: "bg-brand text-brand-ink",
-    dot: "bg-forest-900",
-    panel: "bg-forest-950/50",
-  },
-  lime: {
-    card: "bg-brand text-brand-ink",
-    text: "text-brand-ink",
-    muted: "text-brand-ink/70",
-    chip: "bg-forest-900 text-white",
-    dot: "bg-brand",
-    panel: "bg-white/35",
-  },
-  cream: {
-    card: "bg-[#EFF3E2] text-forest-950",
-    text: "text-forest-950",
-    muted: "text-forest-700",
-    chip: "bg-forest-900 text-white",
-    dot: "bg-forest-700",
-    panel: "bg-white/70",
-  },
-};
 
 /**
  * One promise per card, in the order a seller meets them: the pitch, the

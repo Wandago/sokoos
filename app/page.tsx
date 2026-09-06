@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -25,7 +25,9 @@ import { OrderRow } from "@/components/order-row";
 import { BalanceCard } from "@/components/balance-card";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState, ListSkeleton } from "@/components/ui/state";
+import { useTour } from "@/components/product-tour";
 import { useStore } from "@/lib/store";
+import { TOURED_KEY, appTourSteps } from "@/lib/tour";
 import {
   customerOf,
   expenseSeries,
@@ -54,25 +56,14 @@ export default function DashboardPage() {
 }
 
 /**
- * A first-time visitor meets the tour, not a dashboard full of someone else's
- * numbers. Everyone after that goes straight to work.
+ * The tour now lives after signup, not before it — see app/welcome/page.tsx.
+ * All this gate does is keep a stranger's numbers off a device with no
+ * account on it.
  */
 function FirstRunGate({ children }: { children: React.ReactNode }) {
   const { db } = useStore();
   const router = useRouter();
-  // Safe to read storage here: <Hydrated> only mounts this after hydration.
-  const [seen] = useState(() => {
-    try {
-      return window.localStorage.getItem("sokoos.onboarded") === "1";
-    } catch {
-      return true;
-    }
-  });
-
-  // A first-time visitor meets the tour; someone who has seen it but has no
-  // profile on this device goes to sign in. Nobody lands on a dashboard full
-  // of a stranger's numbers.
-  const destination = !seen ? "/welcome" : !db.account ? "/login" : null;
+  const destination = !db.account ? "/login" : null;
 
   useEffect(() => {
     if (destination) router.replace(destination);
@@ -91,6 +82,23 @@ function greeting() {
 
 function Dashboard() {
   const { db } = useStore();
+  const tour = useTour();
+
+  // The one moment this fires on its own: the first time the dashboard a
+  // new account actually owns is the screen in front of them, not a demo.
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(TOURED_KEY) === "1") return;
+      window.localStorage.setItem(TOURED_KEY, "1");
+    } catch {
+      return;
+    }
+    tour.start(appTourSteps);
+    // Runs once per mount; re-triggering on every store update would restart
+    // the tour mid-sale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const stats = todayStats(db);
   const mom = monthOverMonth(db);
   const series = revenueSeries(db, 7);

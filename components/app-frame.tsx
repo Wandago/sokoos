@@ -42,6 +42,14 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
+/** Which walkthrough step, if any, a nav destination stands in for. */
+function tourIdFor(href: string): string | undefined {
+  if (href === "/pos") return "tour-till";
+  if (href === "/orders") return "tour-orders";
+  if (href === "/settings") return "tour-settings";
+  return undefined;
+}
+
 export function AppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { db } = useStore();
@@ -69,6 +77,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                data-tour={tourIdFor(item.href)}
                 className={cn(
                   "flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-colors",
                   active
@@ -90,6 +99,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         <div className="border-t border-border-subtle p-3">
           <button
             onClick={() => setQuickOpen(true)}
+            data-tour="tour-add"
             className="flex w-full items-center justify-center gap-2 rounded-full bg-brand px-4 py-3 text-sm font-semibold text-brand-ink hover:bg-brand-hover"
           >
             <Plus className="size-4" strokeWidth={2.5} />
@@ -122,7 +132,12 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
                 <span className="absolute right-2 top-2 size-2 rounded-full bg-brand ring-2 ring-panel" />
               )}
             </Link>
-            <Link href="/settings" aria-label="Settings" className="shrink-0">
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              data-tour="tour-settings"
+              className="shrink-0"
+            >
               <Avatar name={db.business.owner} className="size-10 ring-2 ring-white/20" />
             </Link>
           </div>
@@ -149,6 +164,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               icon={item.icon}
               active={isActive(pathname, item.href)}
               count={item.badge ? badges[item.badge] : 0}
+              tourId={tourIdFor(item.href)}
             />
           ))}
           <NavTab
@@ -164,6 +180,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setQuickOpen(true)}
             aria-label="Quick actions"
+            data-tour="tour-add"
             className="ml-0.5 inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-brand text-brand-ink transition-transform active:scale-95"
           >
             <Plus className="size-[22px]" strokeWidth={2.6} />
@@ -183,18 +200,21 @@ function NavTab({
   icon: Icon,
   active,
   count,
+  tourId,
 }: {
   href: string;
   label: string;
   icon: typeof Bell;
   active: boolean;
   count: number;
+  tourId?: string;
 }) {
   return (
     <Link
       href={href}
       aria-label={label}
       aria-current={active ? "page" : undefined}
+      data-tour={tourId}
       className={cn(
         "relative flex h-11 items-center justify-center gap-2 rounded-full text-[12px] font-bold transition-[background-color,color,flex] duration-200",
         active

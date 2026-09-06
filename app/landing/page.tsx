@@ -58,7 +58,7 @@ export default function LandingPage() {
               Log in
             </Link>
             <Link
-              href="/welcome"
+              href="/signup"
               className="inline-flex h-10 items-center gap-1.5 rounded-full bg-brand px-4 text-[14px] font-bold text-brand-ink transition-[filter] hover:brightness-95"
             >
               Get started
@@ -127,7 +127,7 @@ export default function LandingPage() {
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link
-              href="/welcome"
+              href="/signup"
               className="inline-flex h-12 items-center gap-2 rounded-full bg-brand px-6 text-[15px] font-bold text-brand-ink transition-[filter] hover:brightness-95"
             >
               Start free
@@ -397,7 +397,7 @@ export default function LandingPage() {
               ))}
             </ol>
             <Link
-              href="/welcome"
+              href="/signup"
               className="mt-9 inline-flex h-12 items-center gap-2 rounded-full bg-forest-900 px-6 text-[15px] font-bold text-white"
             >
               Start free
@@ -426,7 +426,7 @@ export default function LandingPage() {
               note="For the business finding its rhythm"
               features={["Unlimited orders", "Payments and matching", "Ledger and analytics", "Works offline"]}
               cta="Start free"
-              href="/welcome"
+              href="/signup"
             />
             <PriceCard
               name="Growth"
@@ -435,7 +435,7 @@ export default function LandingPage() {
               note="For the business with a team"
               features={["Everything in Starter", "Smart Capture at volume", "Rider management", "Multiple users"]}
               cta="Talk to us"
-              href="/welcome"
+              href="/signup"
               comingSoon
               featured
             />
@@ -460,7 +460,7 @@ export default function LandingPage() {
                 Your sales, your payments, your riders and your books — finally in one place.
               </p>
               <Link
-                href="/welcome"
+                href="/signup"
                 className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-brand px-7 text-[15px] font-bold text-brand-ink"
               >
                 Start free
@@ -485,7 +485,7 @@ export default function LandingPage() {
             <Link href="/ads" className="hover:text-forest-950">
               Ad kit
             </Link>
-            <Link href="/welcome" className="hover:text-forest-950">
+            <Link href="/signup" className="hover:text-forest-950">
               Onboarding
             </Link>
             <Link href="/" className="hover:text-forest-950">

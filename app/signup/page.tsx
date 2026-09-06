@@ -62,15 +62,11 @@ function SignUpScreen() {
       return setStep("site");
     }
     // Creating the account also creates the mini site — one is not useful
-    // without the other.
+    // without the other. The tour meets them next, now that there is an
+    // account and a business name for it to talk about.
     signUp({ name, email, phone, businessName, tillNumber: till, location, industryId });
     if (tagline.trim()) updateStorefront({ tagline: tagline.trim() });
-    try {
-      window.localStorage.setItem("sokoos.onboarded", "1");
-    } catch {
-      // ignore
-    }
-    router.push("/storefront/?new=1");
+    router.push("/welcome");
   };
 
   return (

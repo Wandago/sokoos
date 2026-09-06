@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Compass,
   Download,
   LogOut,
   Moon,
@@ -24,7 +25,9 @@ import { ConfirmSheet } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { TillCard } from "@/components/mpesa/till-card";
 import { useToast } from "@/components/ui/toast";
+import { useTour } from "@/components/product-tour";
 import { useStore } from "@/lib/store";
+import { appTourSteps } from "@/lib/tour";
 import { industries, industryFor } from "@/lib/industries";
 import type { DeliverySettlement } from "@/lib/types";
 import { cn } from "@/lib/cn";
@@ -55,6 +58,7 @@ function SettingsScreen() {
   const { db, updateBusiness, resetDemoData, signOut } = useStore();
   const router = useRouter();
   const toast = useToast();
+  const tour = useTour();
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [resetting, setResetting] = useState(false);
   const [installed] = useState(isStandalone);
@@ -301,6 +305,10 @@ function SettingsScreen() {
           <Button variant="secondary" full onClick={() => router.push("/welcome")}>
             <Play className="size-4" />
             Replay the tour
+          </Button>
+          <Button variant="secondary" full onClick={() => tour.start(appTourSteps)}>
+            <Compass className="size-4" />
+            Show me around
           </Button>
         </div>
       </Card>

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { SokoMark } from "@/components/soko-mark";
+import { useToast } from "@/components/ui/toast";
 import { setAdminSession, useAdmin, useAdminSession } from "@/lib/admin/store";
 import { queueCounts } from "@/lib/admin/selectors";
 
@@ -49,6 +50,7 @@ export function AdminFrame({
   const { db, ready } = useAdmin();
   const signedIn = useAdminSession();
   const counts = queueCounts(db);
+  const toast = useToast();
 
   // Navigation state, not authorization: this only decides what the console
   // renders, never what data exists. See the note on the sign-in screen.
@@ -129,10 +131,14 @@ export function AdminFrame({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 border-b border-[#E2E5DF] bg-[#F4F5F3]/90 backdrop-blur">
           <div className="flex flex-wrap items-center gap-3 px-5 py-3.5 lg:px-8">
-            <span className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-[#E2E5DF] bg-white px-3.5 text-[13px] text-[#6B756A] lg:max-w-md">
+            <button
+              type="button"
+              onClick={() => toast("Search across the console is coming soon.", "info")}
+              className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-[#E2E5DF] bg-white px-3.5 text-left text-[13px] text-[#6B756A] lg:max-w-md"
+            >
               <Search className="size-3.5 shrink-0" />
               <span className="truncate">Search merchants, tickets, reports</span>
-            </span>
+            </button>
             <EnvironmentBadge />
             <span className="flex size-9 items-center justify-center rounded-full bg-forest-950 text-[11px] font-bold text-brand">
               LW

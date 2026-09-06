@@ -216,7 +216,11 @@ function MerchantPanel({ id, onClose }: { id: string; onClose: () => void }) {
             <ShieldAlert className="size-4" />
             {suspended ? "Reinstate account" : "Suspend account"}
           </Button>
-          <Button variant="secondary" full>
+          <Button
+            variant="secondary"
+            full
+            onClick={() => toast("Viewing a merchant's storefront from here is coming soon.", "info")}
+          >
             <ExternalLink className="size-4" />
             Open their storefront
           </Button>

@@ -17,6 +17,7 @@ import {
 import { SokoMark } from "@/components/soko-mark";
 import { PhoneMock } from "@/components/phone-mock";
 import { SpotCapture, SpotGrowth, SpotLedger, SpotReceipt, SpotRider } from "@/components/spot";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
 const nav = [
@@ -435,6 +436,7 @@ export default function LandingPage() {
               features={["Everything in Starter", "Smart Capture at volume", "Rider management", "Multiple users"]}
               cta="Talk to us"
               href="/welcome"
+              comingSoon
               featured
             />
           </div>
@@ -633,6 +635,7 @@ function PriceCard({
   cta,
   href,
   featured,
+  comingSoon,
 }: {
   name: string;
   price: string;
@@ -642,7 +645,9 @@ function PriceCard({
   cta: string;
   href: string;
   featured?: boolean;
+  comingSoon?: boolean;
 }) {
+  const toast = useToast();
   return (
     <div
       className={cn(
@@ -684,16 +689,30 @@ function PriceCard({
           </li>
         ))}
       </ul>
-      <Link
-        href={href}
-        className={cn(
-          "mt-7 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-bold",
-          featured ? "bg-brand text-brand-ink" : "bg-forest-900 text-white",
-        )}
-      >
-        {cta}
-        <ArrowRight className="size-4" strokeWidth={2.5} />
-      </Link>
+      {comingSoon ? (
+        <button
+          type="button"
+          onClick={() => toast("Growth plan sign-up is coming soon — the app is free for now.", "info")}
+          className={cn(
+            "mt-7 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-bold",
+            featured ? "bg-brand text-brand-ink" : "bg-forest-900 text-white",
+          )}
+        >
+          {cta}
+          <ArrowRight className="size-4" strokeWidth={2.5} />
+        </button>
+      ) : (
+        <Link
+          href={href}
+          className={cn(
+            "mt-7 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-bold",
+            featured ? "bg-brand text-brand-ink" : "bg-forest-900 text-white",
+          )}
+        >
+          {cta}
+          <ArrowRight className="size-4" strokeWidth={2.5} />
+        </Link>
+      )}
     </div>
   );
 }

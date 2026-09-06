@@ -86,16 +86,25 @@ jobs:
       # The serverless path imports the app without ever starting a server. If
       # index.ts regains a side effect that binds a port — which is exactly the
       # bug that splitting serve.ts out was meant to prevent — this catches it.
+      #
+      # Imports api/index.ts itself, the exact file Vercel invokes, and calls
+      # each exported method with a real Web-standard Request. A default
+      # export is invoked with Node's classic (req, res) signature instead —
+      # every request timing out with no error until this called the actual
+      # exports the way Vercel does, rather than re-deriving handle(app) by
+      # hand from src/index.ts and testing that instead.
       - name: The app imports without starting a server
         working-directory: server
         run: |
           npm ci
           cat > import-check.ts <<'TS'
-          import { handle } from "hono/vercel";
-          import { app } from "./src/index.js";
+          import * as fn from "./api/index.js";
           async function main() {
-            if (typeof handle(app) !== "function") throw new Error("no handler built");
-            const res = await app.fetch(new Request("http://x/health"));
+            for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const) {
+              if (typeof fn[method] !== "function") throw new Error(`no ${method} export`);
+            }
+            const res = await fn.GET(new Request("http://x/health"));
+            if (!(res instanceof Response)) throw new Error("did not return a Response");
             if (res.status !== 200) throw new Error(`health said ${res.status}`);
             console.log("imported cleanly, health 200");
             process.exit(0);

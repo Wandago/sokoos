@@ -84,6 +84,25 @@ export const pool = new pg.Pool({
   // function's own timeout: a request that outlives its query has nothing left
   // to wait for.
   statement_timeout: 10_000,
+  /* `idleTimeoutMillis` only fires on a running event loop, and a serverless
+   * instance is frozen mid-memory between requests — the very thing `max: 1`
+   * above is written for. So a connection can go stale on the database's own
+   * side (Supavisor recycling it, a network blip) while this process is
+   * frozen, and the pool has no way to know: it hands the same dead socket to
+   * the next request, which then waits forever, because a query that never
+   * reaches the server never triggers `statement_timeout` either.
+   *
+   * `query_timeout` is the client-side backstop: if a query hasn't answered
+   * in eight seconds, `pg` gives up, errors out, and discards that
+   * connection — so whatever connects next gets a fresh one instead of
+   * inheriting the same hang. Left under `maxDuration` in vercel.json so a
+   * dead connection still returns a real error instead of a Vercel timeout
+   * page. `connectionTimeoutMillis` does the same for the connect step
+   * itself, and `keepAlive` makes a dead socket more likely to be caught by
+   * the OS before either timeout is needed. */
+  connectionTimeoutMillis: 8_000,
+  query_timeout: 8_000,
+  keepAlive: true,
 });
 
 /* An idle client that the database hangs up on — a pooler recycling it, a

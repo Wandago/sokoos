@@ -1,26 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
 
-  "// buildCommand": [
-    "Migrations run once per deploy, here, before any function serves a",
-    "request. They cannot run inside the function: a serverless cold start is",
-    "not a boot, and every concurrent one would race the others.",
-    "",
-    "A failing migration fails the deploy, which is the behaviour worth having",
-    "— the alternative is a live deployment whose code expects a column its",
-    "database does not have."
-  ],
   "buildCommand": "npm run migrate",
 
-  "// rewrites": [
-    "Every path goes to the one function, so routing stays in Hono rather than",
-    "being split between the framework and this file."
-  ],
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
 
   "functions": {
     "api/index.ts": {
-      "// comment": "Ten seconds matches the pool's statement timeout: a request that outlives its own query has nothing useful left to wait for.",
       "maxDuration": 10
     }
   }

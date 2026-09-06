@@ -9,7 +9,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "test": "tsx test/run.ts",
     "typecheck": "tsc --noEmit",
-    "db:check": "tsx scripts/db-check.ts"
+    "db:check": "tsx scripts/db-check.ts",
+    "admin:create": "tsx scripts/admin-create.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

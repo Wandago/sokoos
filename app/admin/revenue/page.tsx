@@ -33,7 +33,7 @@ export default function RevenuePage() {
   return (
     <AdminFrame
       title="Revenue"
-      subtitle="What SokoOS earns, against what merchants transact."
+      subtitle="Sample data — not yet wired to a real backend. What SokoOS earns, against what merchants transact."
     >
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="MRR" value={money(stats.mrr, { compact: true })} sub="recurring, this month" />

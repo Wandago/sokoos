@@ -66,7 +66,7 @@ function Moderation() {
   return (
     <AdminFrame
       title="Storefront moderation"
-      subtitle="Reports raised against merchant mini sites, by customers and by automated scans."
+      subtitle="Sample data — not yet wired to a real backend. Reports raised against merchant mini sites, by customers and by automated scans."
     >
       <Segmented
         className="mb-4"

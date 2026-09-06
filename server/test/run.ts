@@ -16,6 +16,7 @@ import { normalisePhone, InvalidPhone, maskPhone } from "../src/lib/phone.js";
 import { pull, push } from "../src/lib/sync.js";
 import { encrypt, decrypt, resetKeyCache, maskSecret } from "../src/lib/crypto.js";
 import { handleConfirmation } from "../src/lib/mpesa.js";
+import { hashPassword } from "../src/lib/password.js";
 
 let failures = 0;
 let checks = 0;
@@ -543,6 +544,112 @@ async function main() {
     );
     ok("while still seeing its own", own.length === 1, own);
   }
+
+  /* ---------------------------------------------------------------- */
+  section("The operator console — real data, real login");
+
+  // There is no signup endpoint by design; provisioning an admin is a direct
+  // database write, exactly as scripts/admin-create.ts does it.
+  await query(
+    `insert into admin_users (email, password_hash, name) values ($1, $2, $3)
+     on conflict (email) do update set password_hash = excluded.password_hash`,
+    ["ops@sokoos.app", hashPassword("a very real passphrase"), "Ops"],
+  );
+
+  const wrongLogin = await api("POST", "/admin/login", {
+    email: "ops@sokoos.app",
+    password: "not it",
+  });
+  eq("a wrong password is refused", wrongLogin.status, 401);
+
+  const unknownLogin = await api("POST", "/admin/login", {
+    email: "nobody@sokoos.app",
+    password: "whatever",
+  });
+  eq("an unknown email fails the same way", unknownLogin.status, 401);
+  eq(
+    "not with a different message an attacker could use to enumerate admins",
+    unknownLogin.body.error,
+    wrongLogin.body.error,
+  );
+
+  const adminLogin = await api("POST", "/admin/login", {
+    email: "ops@sokoos.app",
+    password: "a very real passphrase",
+  });
+  eq("the real password signs in", adminLogin.status, 200);
+  const adminToken: string = adminLogin.body.token;
+
+  const adminNoToken = await api("GET", "/admin/merchants");
+  eq("the console refuses no token", adminNoToken.status, 401);
+
+  const sellerTokenOnAdmin = await api("GET", "/admin/merchants", undefined, amina.token);
+  eq("and refuses a seller's own token", sellerTokenOnAdmin.status, 401);
+
+  const merchants = await api("GET", "/admin/merchants", undefined, adminToken);
+  eq("the list loads", merchants.status, 200);
+  const listedAmina = merchants.body.find((m: Doc) => m.id === shop);
+  ok("Amina's business is in it", Boolean(listedAmina), merchants.body);
+  eq("under her own name", listedAmina.owner.name, "Amina Hassan");
+  eq("with the till connected earlier in this run", listedAmina.till.shortcode, "174379");
+
+  const detail = await api("GET", `/admin/merchants/${shop}`, undefined, adminToken);
+  eq("the detail loads", detail.status, 200);
+  ok(
+    "and counts the records this business actually has",
+    Object.keys(detail.body.recordCounts).length > 0,
+    detail.body.recordCounts,
+  );
+
+  const missingMerchant = await api("GET", `/admin/merchants/${randomUUID()}`, undefined, adminToken);
+  eq("a made-up id is a 404", missingMerchant.status, 404);
+
+  const suspend = await api(
+    "POST",
+    `/admin/merchants/${shop}/suspend`,
+    { reason: "Chargeback dispute" },
+    adminToken,
+  );
+  eq("suspending works", suspend.status, 200);
+  ok("and the business is marked suspended", Boolean(suspend.body.suspendedAt), suspend.body);
+
+  const { rows: audited } = await query<{ action: string; actor: string; detail: Doc | null }>(
+    `select action, actor, detail from admin_audit where tenant_id = $1 order by at desc limit 1`,
+    [shop],
+  );
+  eq("the suspension is on the record", audited[0]?.action, "suspend");
+  eq("naming who did it", audited[0]?.actor, "ops@sokoos.app");
+  eq("and why", audited[0]?.detail?.reason, "Chargeback dispute");
+
+  const meAfterSuspend = await api("GET", "/me", undefined, amina.token);
+  ok(
+    "suspension has teeth: the business vanishes from its owner's own session",
+    !meAfterSuspend.body.tenants.some((t: Doc) => t.id === shop),
+    meAfterSuspend.body,
+  );
+
+  const syncWhileSuspended = await api(
+    "GET",
+    `/tenants/${shop}/sync?since=0`,
+    undefined,
+    amina.token,
+  );
+  eq("and sync refuses the suspended tenant too", syncWhileSuspended.status, 404);
+
+  const reinstate = await api("POST", `/admin/merchants/${shop}/reinstate`, {}, adminToken);
+  eq("reinstating works", reinstate.status, 200);
+  eq("and clears the suspension", reinstate.body.suspendedAt, null);
+
+  const meAfterReinstate = await api("GET", "/me", undefined, amina.token);
+  ok(
+    "the business is back for its owner",
+    meAfterReinstate.body.tenants.some((t: Doc) => t.id === shop),
+    meAfterReinstate.body,
+  );
+
+  await api("POST", "/admin/sign-out", {}, adminToken);
+  const afterAdminSignOut = await api("GET", "/admin/merchants", undefined, adminToken);
+  eq("a signed-out admin token stops working", afterAdminSignOut.status, 401);
 
   /* ---------------------------------------------------------------- */
   section("Sessions end");

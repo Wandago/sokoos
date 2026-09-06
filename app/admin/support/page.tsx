@@ -64,7 +64,7 @@ function Support() {
   return (
     <AdminFrame
       title="Support"
-      subtitle="Merchant tickets, ordered by how close each is to missing its first-response target."
+      subtitle="Sample data — not yet wired to a real backend. Merchant tickets, ordered by how close each is to missing its first-response target."
     >
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="In the queue" value={String(tallies.queue)} sub="open and pending" />

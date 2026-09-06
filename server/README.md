@@ -157,9 +157,27 @@ is worse than no match. Whatever is left shows up in `/mpesa/unmatched`.
 one is set. Wiring an aggregator is one function, and it needs an account this
 build does not have.
 
-**Admin authorization.** The console's staff sign-in is still navigation rather
-than authorization. The `admin_audit` table exists, ready, and is not yet
-written to.
+**Most of the operator console.** Sign-in and the Merchants page are real —
+see the next section. Revenue, Storefronts, Support and System still run on
+sample data, because nothing else in this build yet produces real billing,
+moderation reports, or support tickets for them to show.
+
+## The operator console
+
+`/admin/login` checks a password against `admin_users`, not a shape check in
+the browser, and every `/admin/*` route after it needs the session token that
+comes back. There is no signup endpoint on purpose — see the comment at the
+top of `migrations/005_admin.sql`. Create the first admin directly against
+the database:
+
+```
+DATABASE_URL="postgres://..." npm run admin:create -- \
+  --email you@sokoos.app --password "a real passphrase" --name "Your name"
+```
+
+Run it again with the same email to reset that admin's password. Every
+suspend and reinstate is written to `admin_audit` with who did it and why —
+nothing deletes from that table.
 
 ## Pointing it at Supabase
 

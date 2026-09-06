@@ -1,6 +1,7 @@
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { query, withAccount } from "../db/pool.js";
 import { normalisePhone } from "./phone.js";
+import { sameHash, sha256 } from "./hash.js";
 
 /**
  * Signing in with a phone number and a six-digit code.
@@ -19,17 +20,6 @@ const MAX_ATTEMPTS = 5;
 const SESSION_DAYS = 60;
 /** No more than this many codes per number per window, to stop SMS billing abuse. */
 const MAX_CODES_PER_HOUR = 5;
-
-function sha256(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-/** Constant time, so a wrong code cannot be narrowed down by timing it. */
-function sameHash(a: string, b: string) {
-  const left = Buffer.from(a, "hex");
-  const right = Buffer.from(b, "hex");
-  return left.length === right.length && timingSafeEqual(left, right);
-}
 
 export interface RequestedCode {
   phone: string;

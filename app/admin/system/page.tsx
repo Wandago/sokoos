@@ -31,7 +31,7 @@ export default function SystemPage() {
   return (
     <AdminFrame
       title="System"
-      subtitle="Service health, recent incidents, and what is switched on for whom."
+      subtitle="Sample data — not yet wired to a real backend. Service health, recent incidents, and what is switched on for whom."
       actions={
         <button
           onClick={() => {

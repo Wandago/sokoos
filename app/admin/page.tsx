@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, ArrowUpRight, ChevronRight, Loader2 } from "lucide-react";
 import { AdminFrame, Metric, Panel, PanelHead } from "@/components/admin/admin-frame";
 import { BarChart, RankedBars } from "@/components/ui/chart";
 import { Badge } from "@/components/ui/badge";
 import { useAdmin } from "@/lib/admin/store";
+import { adminApiAvailable, fetchOverview, type PlatformOverview } from "@/lib/admin/api";
 import {
   planMix,
   platformStats,
@@ -26,10 +28,20 @@ export default function AdminOverviewPage() {
   const mix = planMix(db);
   const top = topMerchants(db, 6);
 
+  const [real, setReal] = useState<PlatformOverview | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!adminApiAvailable()) return;
+    fetchOverview()
+      .then(setReal)
+      .catch((err) => setError((err as Error).message));
+  }, []);
+
   return (
     <AdminFrame
       title="Platform overview"
-      subtitle="Everything moving through SokoOS in the last 30 days."
+      subtitle="The top row is real. Everything below it is sample data — see the note on the sign-in screen."
       actions={
         <Link
           href="/admin/merchants"
@@ -40,7 +52,53 @@ export default function AdminOverviewPage() {
         </Link>
       }
     >
-      {/* What needs a human today, before anything else. */}
+      {error && (
+        <p className="mb-4 flex items-center gap-2 rounded-2xl bg-danger-soft p-3.5 text-[13px] font-medium text-danger-text">
+          <AlertCircle className="size-4 shrink-0" />
+          {error}
+        </p>
+      )}
+
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#8A948A]">
+        Real, from the platform database
+      </div>
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {!adminApiAvailable() ? (
+          <p className="col-span-full text-[13px] text-[#6B756A]">
+            No API configured for this build.
+          </p>
+        ) : !real ? (
+          <p className="col-span-full flex items-center gap-2 text-[13px] text-[#6B756A]">
+            <Loader2 className="size-4 animate-spin" />
+            Loading…
+          </p>
+        ) : (
+          <>
+            <Metric
+              label="Merchants"
+              value={num(real.merchants)}
+              sub={`${real.newThisWeek} new this week`}
+            />
+            <Metric
+              label="Active this week"
+              value={num(real.activeThisWeek)}
+              sub={`of ${real.merchants} total`}
+            />
+            <Metric
+              label="Suspended"
+              value={num(real.suspended)}
+              sub="See the Merchants page"
+            />
+            <Metric
+              label="M-Pesa tills"
+              value={num(real.tillsConnected)}
+              sub={`${real.tillsRegistered} registered with Safaricom`}
+            />
+          </>
+        )}
+      </div>
+
+      {/* What needs a human today, before anything else. Sample data. */}
       {(counts.reports > 0 || counts.breached > 0 || counts.pastDue > 0) && (
         <div className="mb-5 flex flex-wrap gap-2.5">
           {counts.breached > 0 && (
@@ -67,30 +125,9 @@ export default function AdminOverviewPage() {
         </div>
       )}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric
-          label="GMV, last 30 days"
-          value={money(stats.gmv, { compact: true })}
-          delta={stats.gmvDelta}
-          sub="transacted by merchants"
-        />
-        <Metric
-          label="MRR"
-          value={money(stats.mrr, { compact: true })}
-          sub={`${stats.paying} paying · ${money(stats.arpu)} ARPU`}
-        />
-        <Metric
-          label="Merchants"
-          value={num(stats.merchants)}
-          sub={`${stats.live} live · ${stats.activeToday} active today`}
-        />
-        <Metric
-          label="Churned"
-          value={`${stats.churnRate.toFixed(1)}%`}
-          sub={`${stats.churned} of ${stats.merchants} accounts`}
-        />
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[#8A948A]">
+        Sample data — not yet wired to a real backend
       </div>
-
       <div className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Panel>
           <PanelHead

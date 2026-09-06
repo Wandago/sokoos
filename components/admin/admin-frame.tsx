@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/cn";
 import { SokoMark } from "@/components/soko-mark";
 import { useToast } from "@/components/ui/toast";
-import { setAdminSession, useAdmin, useAdminSession } from "@/lib/admin/store";
+import { signOutAdmin, useAdmin, useAdminSession } from "@/lib/admin/store";
 import { queueCounts } from "@/lib/admin/selectors";
 
 /**
@@ -116,7 +116,7 @@ export function AdminFrame({
           </Link>
           <button
             onClick={() => {
-              setAdminSession(false);
+              signOutAdmin();
               router.push("/admin/login");
             }}
             className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[13px] font-semibold text-forest-200 hover:bg-white/5 hover:text-white"

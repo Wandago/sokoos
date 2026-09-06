@@ -26,6 +26,15 @@ import {
   unmatchedEvents,
 } from "./lib/mpesa.js";
 import { MissingKey } from "./lib/crypto.js";
+import { BadCredentials, adminCallerFor, adminLogin, adminSignOut, type AdminCaller } from "./lib/admin-auth.js";
+import {
+  NoSuchMerchant,
+  listMerchants,
+  merchantDetail,
+  overview,
+  reinstateMerchant,
+  suspendMerchant,
+} from "./lib/admin.js";
 
 /**
  * The API.
@@ -37,7 +46,7 @@ import { MissingKey } from "./lib/crypto.js";
  * device, and serve the public mini site to people who have never signed in.
  */
 
-type Env = { Variables: { caller: Caller; tenantId: string } };
+type Env = { Variables: { caller: Caller; tenantId: string; admin: AdminCaller } };
 
 const app = new Hono<Env>();
 
@@ -62,6 +71,8 @@ app.onError((error, c) => {
   if (error instanceof TooManyOps) return c.json({ error: error.message }, 413);
   if (error instanceof NoMpesaAccount) return c.json({ error: error.message }, 404);
   if (error instanceof DarajaError) return c.json({ error: error.message }, 502);
+  if (error instanceof BadCredentials) return c.json({ error: error.message }, 401);
+  if (error instanceof NoSuchMerchant) return c.json({ error: error.message }, 404);
   if (error instanceof MissingKey) {
     console.error(error.message);
     return c.json({ error: "Payments are not configured on this server." }, 503);
@@ -94,12 +105,30 @@ const PUBLIC_PATHS = [
 app.use("*", async (c, next) => {
   if (c.req.method === "OPTIONS") return next();
   const path = new URL(c.req.url).pathname;
-  if (PUBLIC_PATHS.some((allowed) => allowed.test(path))) return next();
+  // The operator console has its own sign-in and its own guard below — a
+  // seller session proves nothing about admin access, and an admin session
+  // is not a tenant to scope seller routes by.
+  if (PUBLIC_PATHS.some((allowed) => allowed.test(path)) || path.startsWith("/admin/")) {
+    return next();
+  }
 
   const header = c.req.header("authorization") ?? "";
   const caller = await callerFor(header.replace(/^Bearer\s+/i, "") || undefined);
   if (!caller) return c.json({ error: "Sign in again." }, 401);
   c.set("caller", caller);
+  await next();
+});
+
+/**
+ * The operator console's own gate. Everything under /admin needs a real,
+ * server-verified session — `/admin/login` is the one door in.
+ */
+app.use("/admin/*", async (c, next) => {
+  if (c.req.method === "OPTIONS" || c.req.path === "/admin/login") return next();
+  const header = c.req.header("authorization") ?? "";
+  const admin = await adminCallerFor(header.replace(/^Bearer\s+/i, "") || undefined);
+  if (!admin) return c.json({ error: "Sign in again." }, 401);
+  c.set("admin", admin);
   await next();
 });
 
@@ -325,6 +354,41 @@ app.post("/mpesa/c2b/:secret/confirmation", async (c) => {
     console.warn(`[mpesa] ${result.status}${result.reason ? `: ${result.reason}` : ""}`);
   }
   return c.json({ ResultCode: 0, ResultDesc: "Accepted" });
+});
+
+/* ------------------------------------------------------------------ *
+ * The operator console
+ * ------------------------------------------------------------------ */
+
+app.post("/admin/login", async (c) => {
+  const body = await c.req.json<{ email?: string; password?: string }>();
+  return c.json(await adminLogin(body.email ?? "", body.password ?? ""));
+});
+
+app.post("/admin/sign-out", async (c) => {
+  await adminSignOut((c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, ""));
+  return c.json({ ok: true });
+});
+
+app.get("/admin/overview", async (c) => c.json(await overview()));
+
+app.get("/admin/merchants", async (c) => c.json(await listMerchants()));
+
+app.get("/admin/merchants/:id", async (c) => {
+  const merchant = await merchantDetail(c.req.param("id"));
+  if (!merchant) return c.json({ error: "No business with that id." }, 404);
+  return c.json(merchant);
+});
+
+app.post("/admin/merchants/:id/suspend", async (c) => {
+  const body = await c.req.json<{ reason?: string }>().catch(() => ({}) as { reason?: string });
+  await suspendMerchant(c.req.param("id"), c.get("admin").email, body.reason);
+  return c.json(await merchantDetail(c.req.param("id")));
+});
+
+app.post("/admin/merchants/:id/reinstate", async (c) => {
+  await reinstateMerchant(c.req.param("id"), c.get("admin").email);
+  return c.json(await merchantDetail(c.req.param("id")));
 });
 
 /* ------------------------------------------------------------------ *

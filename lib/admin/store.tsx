@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import { createAdminDatabase, ADMIN_DB_VERSION } from "./seed";
+import { adminSignOut as adminApiSignOut, getAdminToken, setAdminToken } from "./api";
 import type { AdminDatabase, MerchantStatus, Plan, ReportStatus, TicketStatus } from "./types";
 
 const STORAGE_KEY = "sokoos.admin.v1";
@@ -163,25 +164,15 @@ export function AdminStoreProvider({ children }: { children: React.ReactNode }) 
   return <AdminContext.Provider value={value}>{children}</AdminContext.Provider>;
 }
 
-/* ---- Console session -------------------------------------------------
+/* ---- Console session ---------------------------------------------------
  *
- * A flag in localStorage that decides whether the console UI is shown. It is
- * navigation state, not authorization: anyone can read the bundle and set the
- * flag themselves. Real protection has to live on the server that serves the
- * data — see the note on the sign-in screen.
+ * A real bearer token, issued by POST /admin/login and checked on the server
+ * for every /admin/* request from here on — see server/src/lib/admin-auth.ts.
+ * What lives in localStorage is the token itself, not a flag saying whether
+ * to trust the tab: the server is what decides that now.
  */
 
-export const ADMIN_SESSION_KEY = "sokoos.admin.session";
-
 const sessionListeners = new Set<() => void>();
-
-function readSession() {
-  try {
-    return window.localStorage.getItem(ADMIN_SESSION_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
 
 function subscribeSession(listener: () => void) {
   sessionListeners.add(listener);
@@ -190,19 +181,24 @@ function subscribeSession(listener: () => void) {
   };
 }
 
-export function setAdminSession(open: boolean) {
-  try {
-    if (open) window.localStorage.setItem(ADMIN_SESSION_KEY, "1");
-    else window.localStorage.removeItem(ADMIN_SESSION_KEY);
-  } catch {
-    // ignore
-  }
+/** Called once POST /admin/login succeeds, so every useAdminSession() re-renders. */
+export function completeAdminLogin(token: string) {
+  setAdminToken(token);
   sessionListeners.forEach((listener) => listener());
 }
 
-/** True once hydrated and the console flag is set. False during prerender. */
+export function signOutAdmin() {
+  // Best-effort: the token that authorises this call is read before it is
+  // cleared below, so the server sees the sign-out even though the request
+  // itself resolves after this function has already returned.
+  void adminApiSignOut();
+  setAdminToken(null);
+  sessionListeners.forEach((listener) => listener());
+}
+
+/** True once hydrated and a token is present. False during prerender. */
 export function useAdminSession() {
-  return useSyncExternalStore(subscribeSession, readSession, alwaysFalse);
+  return useSyncExternalStore(subscribeSession, () => getAdminToken() !== null, alwaysFalse);
 }
 
 export function useAdmin() {

@@ -33,8 +33,12 @@ import {
   merchantDetail,
   overview,
   reinstateMerchant,
+  revenue,
   suspendMerchant,
+  systemHealth,
 } from "./lib/admin.js";
+import { NoSuchShop, NoSuchReport, fileReport, listReports, setReportStatus } from "./lib/reports.js";
+import { NoSuchTicket, assignTicket, fileTicket, listTickets, setTicketStatus } from "./lib/tickets.js";
 
 /**
  * The API.
@@ -73,6 +77,9 @@ app.onError((error, c) => {
   if (error instanceof DarajaError) return c.json({ error: error.message }, 502);
   if (error instanceof BadCredentials) return c.json({ error: error.message }, 401);
   if (error instanceof NoSuchMerchant) return c.json({ error: error.message }, 404);
+  if (error instanceof NoSuchShop) return c.json({ error: error.message }, 404);
+  if (error instanceof NoSuchReport) return c.json({ error: error.message }, 404);
+  if (error instanceof NoSuchTicket) return c.json({ error: error.message }, 404);
   if (error instanceof MissingKey) {
     console.error(error.message);
     return c.json({ error: "Payments are not configured on this server." }, 503);
@@ -95,6 +102,9 @@ const PUBLIC_PATHS = [
   /^\/auth\/verify$/,
   // The mini site is read by customers who have never signed in.
   /^\/store\/[^/]+$/,
+  // Reporting a shop is exactly the same customer — nothing here should ever
+  // require the sign-in the report is likely about avoiding.
+  /^\/store\/[^/]+\/report$/,
   /* Safaricom's servers call these and cannot hold a session. The secret in
    * the URL is what identifies the seller, and the payload's shortcode is
    * checked against that seller's own before anything is written. */
@@ -292,6 +302,23 @@ tenantScoped.post("/mpesa/request", async (c) => {
 
 tenantScoped.get("/mpesa/unmatched", async (c) => c.json(await unmatchedEvents(c.get("tenantId"))));
 
+/* ------------------------------------------------------------------ *
+ * The seller's own support tickets
+ * ------------------------------------------------------------------ */
+
+tenantScoped.post("/support", async (c) => {
+  const body = await c.req.json<{ subject?: string; message?: string; priority?: string }>();
+  if (!body.subject?.trim() || !body.message?.trim()) {
+    return c.json({ error: "A subject and message are needed." }, 400);
+  }
+  const ticket = await fileTicket(
+    c.get("tenantId"),
+    { subject: body.subject, message: body.message, priority: body.priority },
+    c.get("caller").accountId,
+  );
+  return c.json(ticket, 201);
+});
+
 tenantScoped.get("/cursor", async (c) => c.json({ cursor: await cursorFor(c.get("tenantId")) }));
 tenantScoped.get("/summary", async (c) => c.json(await summary(c.get("tenantId"))));
 
@@ -371,6 +398,48 @@ app.post("/admin/sign-out", async (c) => {
 });
 
 app.get("/admin/overview", async (c) => c.json(await overview()));
+app.get("/admin/revenue", async (c) => c.json(await revenue()));
+app.get("/admin/system", async (c) => c.json(await systemHealth()));
+
+app.get("/admin/reports", async (c) => c.json(await listReports()));
+
+app.post("/admin/reports/:id/status", async (c) => {
+  const body = await c.req.json<{ status?: string }>();
+  const status = body.status;
+  if (status !== "reviewing" && status !== "upheld" && status !== "dismissed") {
+    return c.json({ error: "A valid status is required." }, 400);
+  }
+  const { tenantId } = await setReportStatus(c.req.param("id"), status, c.get("admin").email);
+  /* Upholding a report suspends the merchant and takes their storefront
+   * offline — the same action the admin could take from the merchant record
+   * itself, just triggered from the report that justified it. */
+  if (status === "upheld") {
+    await suspendMerchant(
+      tenantId,
+      c.get("admin").email,
+      `Report upheld: ${c.req.param("id")}`,
+    );
+  }
+  return c.json(await listReports());
+});
+
+app.get("/admin/tickets", async (c) => c.json(await listTickets()));
+
+app.post("/admin/tickets/:id/status", async (c) => {
+  const body = await c.req.json<{ status?: string }>();
+  const status = body.status;
+  if (status !== "open" && status !== "pending" && status !== "solved") {
+    return c.json({ error: "A valid status is required." }, 400);
+  }
+  await setTicketStatus(c.req.param("id"), status);
+  return c.json(await listTickets());
+});
+
+app.post("/admin/tickets/:id/assign", async (c) => {
+  const body = await c.req.json<{ assignee?: string }>();
+  await assignTicket(c.req.param("id"), body.assignee?.trim() || c.get("admin").email);
+  return c.json(await listTickets());
+});
 
 app.get("/admin/merchants", async (c) => c.json(await listMerchants()));
 
@@ -436,6 +505,17 @@ app.get("/store/:slug", async (c) => {
     products: visible("product"),
     services: visible("service"),
   });
+});
+
+app.post("/store/:slug/report", async (c) => {
+  const body = await c.req.json<{ reason?: string; detail?: string; contact?: string }>();
+  if (!body.detail?.trim()) return c.json({ error: "Say what's wrong." }, 400);
+  await fileReport(c.req.param("slug"), {
+    reason: body.reason,
+    detail: body.detail,
+    reporterContact: body.contact,
+  });
+  return c.json({ ok: true }, 201);
 });
 
 export { app };

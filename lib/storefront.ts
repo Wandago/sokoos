@@ -1,3 +1,4 @@
+import { call, syncConfigured } from "./sync/client";
 import type { Product, Storefront, StorefrontPalette, StorefrontTemplate } from "./types";
 
 /**
@@ -172,4 +173,31 @@ export function orderLink(storefront: Storefront, product?: Product) {
 
 export function storefrontUrl(storefront: Storefront) {
   return `sokoos.app/store/${storefront.slug}`;
+}
+
+/** True on a hosted build, where a shop's real address can be resolved by anyone, not just this device. */
+export function hostedStorefronts() {
+  return syncConfigured();
+}
+
+/** Fetches a business's published storefront by its public slug. No sign-in — the same request any customer's browser makes. */
+export async function fetchHostedStorefront(
+  slug: string,
+): Promise<{ storefront: Storefront; products: Product[] }> {
+  return call<{ storefront: Storefront; products: Product[] }>(
+    `/store/${encodeURIComponent(slug)}`,
+  );
+}
+
+export type ReportReason = "counterfeit" | "scam" | "offensive" | "impersonation" | "other";
+
+/** A customer flagging a shop. Reaches SokoOS directly — there is nothing on this device to write it to. */
+export async function fileStoreReport(
+  slug: string,
+  input: { reason: ReportReason; detail: string; contact?: string },
+): Promise<void> {
+  await call(`/store/${encodeURIComponent(slug)}/report`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }

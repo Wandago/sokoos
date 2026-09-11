@@ -1,122 +1,120 @@
 "use client";
 
-import { AdminFrame, Metric, Panel, PanelHead } from "@/components/admin/admin-frame";
-import { GroupedBarChart, RankedBars } from "@/components/ui/chart";
-import { PlanBadge, MerchantStatusBadge } from "@/components/admin/merchant-bits";
-import { useAdmin } from "@/lib/admin/store";
-import { planMix, platformStats } from "@/lib/admin/selectors";
-import { money, num, relativeTime } from "@/lib/format";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { AdminFrame, Metric, Panel, PanelHead } from "@/components/admin/admin-frame";
+import { BarChart, RankedBars } from "@/components/ui/chart";
+import { fetchRevenue, type PlatformRevenue } from "@/lib/admin/api";
+import { money } from "@/lib/format";
 
 export default function RevenuePage() {
-  const { db } = useAdmin();
-  const stats = platformStats(db);
-  const mix = planMix(db);
+  const [data, setData] = useState<PlatformRevenue | null>(null);
+  const [error, setError] = useState("");
 
-  // MRR against GMV, month by month, reconstructed from when each merchant
-  // joined — an honest approximation, not a billing ledger.
-  const months = Array.from({ length: 6 }, (_, i) => {
-    const start = new Date();
-    start.setMonth(start.getMonth() - (5 - i), 1);
-    start.setHours(0, 0, 0, 0);
-    const joined = db.merchants.filter((m) => +new Date(m.joinedAt) <= +start);
-    const paying = joined.filter((m) => m.mrr > 0);
-    return {
-      label: start.toLocaleDateString("en-KE", { month: "short" }),
-      a: paying.reduce((sum, m) => sum + m.mrr, 0),
-      b: Math.round(joined.reduce((sum, m) => sum + m.gmv30d, 0) / 100),
-    };
-  });
-
-  const pastDue = db.merchants.filter((m) => m.status === "past_due");
+  useEffect(() => {
+    fetchRevenue()
+      .then(setData)
+      .catch((err) => setError((err as Error).message));
+  }, []);
 
   return (
     <AdminFrame
       title="Revenue"
-      subtitle="Sample data — not yet wired to a real backend. What SokoOS earns, against what merchants transact."
+      subtitle="What actually moved through the platform. There is no billing yet, so this is transaction volume, not what SokoOS earns."
     >
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="MRR" value={money(stats.mrr, { compact: true })} sub="recurring, this month" />
-        <Metric label="ARPU" value={money(stats.arpu)} sub={`${stats.paying} paying merchants`} />
-        <Metric
-          label="Take rate"
-          value={`${stats.takeRate.toFixed(2)}%`}
-          sub="MRR as a share of GMV"
-        />
-        <Metric
-          label="Past due"
-          value={num(pastDue.length)}
-          sub={money(pastDue.reduce((sum, m) => sum + m.mrr, 0)) + " at risk"}
-        />
-      </div>
+      {error && (
+        <p className="mb-4 flex items-center gap-2 rounded-2xl bg-danger-soft p-3.5 text-[13px] font-medium text-danger-text">
+          <AlertCircle className="size-4 shrink-0" />
+          {error}
+        </p>
+      )}
 
-      <div className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <Panel>
-          <PanelHead
-            title="MRR against GMV"
-            note="GMV shown at 1% scale so both series share one axis"
-          />
-          <div className="p-4">
-            <GroupedBarChart data={months} seriesA="MRR" seriesB="GMV ÷ 100" />
-          </div>
-        </Panel>
-
-        <Panel>
-          <PanelHead title="Revenue by plan" />
-          <div className="p-4">
-            <RankedBars
-              data={mix.map((row) => ({
-                label: row.label,
-                value: row.mrr,
-                note: `${row.count} merchants · ${
-                  stats.mrr ? Math.round((row.mrr / stats.mrr) * 100) : 0
-                }% of MRR`,
-              }))}
+      {!data ? (
+        <p className="flex items-center gap-2 py-12 text-[13px] text-[#6B756A]">
+          <Loader2 className="size-4 animate-spin" />
+          Loading…
+        </p>
+      ) : (
+        <>
+          <div className="mb-5 grid gap-3 sm:grid-cols-2">
+            <Metric
+              label="GMV this month"
+              value={money(data.gmvThisMonth, { compact: true })}
+              sub="payments recorded as received, calendar month to date"
+            />
+            <Metric
+              label="GMV, last 30 days"
+              value={money(data.gmvLast30d, { compact: true })}
+              sub="M-Pesa, cash — however it was recorded"
             />
           </div>
-        </Panel>
-      </div>
 
-      <Panel className="overflow-hidden">
-        <PanelHead
-          title="Accounts past due"
-          note="Chase these before they churn"
-          action={
-            <span className="tabular text-[12px] font-semibold text-[#6B756A]">
-              {money(pastDue.reduce((sum, m) => sum + m.mrr, 0))} at risk
-            </span>
-          }
-        />
-        {pastDue.length ? (
-          <div className="divide-y divide-[#EDEFEB]">
-            {pastDue.map((merchant) => (
-              <Link
-                key={merchant.id}
-                href={`/admin/merchants?id=${merchant.id}`}
-                className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-[#F8F9F7]"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-semibold">
-                    {merchant.business}
-                  </span>
-                  <span className="block truncate text-[11px] text-[#8A948A]">
-                    {merchant.owner} · last active {relativeTime(merchant.lastActiveAt).toLowerCase()}
-                  </span>
-                </span>
-                <PlanBadge plan={merchant.plan} />
-                <MerchantStatusBadge status={merchant.status} />
-                <span className="tabular w-24 shrink-0 text-right text-[13px] font-bold">
-                  {money(merchant.mrr)}
-                </span>
-              </Link>
-            ))}
+          <div className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+            <Panel>
+              <PanelHead title="GMV by week" note="Last 8 weeks, across every business" />
+              <div className="p-4">
+                {data.gmvByWeek.length ? (
+                  <BarChart
+                    data={data.gmvByWeek.map((w) => ({
+                      label: new Date(w.label).toLocaleDateString("en-KE", {
+                        month: "short",
+                        day: "numeric",
+                      }),
+                      value: w.value,
+                    }))}
+                  />
+                ) : (
+                  <p className="py-8 text-center text-[13px] text-[#6B756A]">
+                    No payments recorded yet.
+                  </p>
+                )}
+              </div>
+            </Panel>
+
+            <Panel>
+              <PanelHead title="Top merchants" note="By GMV in the last 30 days" />
+              <div className="p-4">
+                {data.topMerchants.length ? (
+                  <RankedBars
+                    data={data.topMerchants.map((m) => ({
+                      label: m.name,
+                      value: m.gmv,
+                      note: `sokoos.app/store/${m.slug}`,
+                    }))}
+                  />
+                ) : (
+                  <p className="py-8 text-center text-[13px] text-[#6B756A]">
+                    Nothing in the last 30 days.
+                  </p>
+                )}
+              </div>
+            </Panel>
           </div>
-        ) : (
-          <p className="px-4 py-10 text-center text-[13px] text-[#6B756A]">
-            Nothing past due. Every paying account is current.
-          </p>
-        )}
-      </Panel>
+
+          {data.topMerchants.length > 0 && (
+            <Panel className="overflow-hidden">
+              <PanelHead title="Top merchants, in detail" note="Last 30 days" />
+              <div className="divide-y divide-[#EDEFEB]">
+                {data.topMerchants.map((merchant) => (
+                  <Link
+                    key={merchant.id}
+                    href={`/admin/merchants?id=${merchant.id}`}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-[#F8F9F7]"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+                      {merchant.name}
+                    </span>
+                    <span className="tabular w-28 shrink-0 text-right text-[13px] font-bold">
+                      {money(merchant.gmv)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </>
+      )}
     </AdminFrame>
   );
 }

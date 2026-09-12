@@ -1,19 +1,23 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Clock, UserPlus } from "lucide-react";
+import { AlertCircle, Check, Clock, Loader2, UserPlus } from "lucide-react";
 import { AdminFrame, Metric, Panel } from "@/components/admin/admin-frame";
 import { Badge } from "@/components/ui/badge";
 import { Segmented } from "@/components/ui/segmented";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { useAdmin } from "@/lib/admin/store";
-import { merchantById, queueCounts } from "@/lib/admin/selectors";
-import type { TicketPriority, TicketStatus } from "@/lib/admin/types";
+import {
+  assignTicket,
+  fetchTickets,
+  setTicketStatus,
+  type AdminTicket,
+  type TicketPriority,
+  type TicketStatus,
+} from "@/lib/admin/api";
 import { useQuery } from "@/lib/use-query";
 import { relativeTime } from "@/lib/format";
-import { cn } from "@/lib/cn";
 
 export default function SupportPage() {
   return (
@@ -39,41 +43,75 @@ const statusTone: Record<TicketStatus, "brand" | "pending" | "success"> = {
 };
 
 function Support() {
-  const { db, setTicketStatus, assignTicket } = useAdmin();
   const { get, set } = useQuery();
   const toast = useToast();
   const [filter, setFilter] = useState<Filter>("queue");
-  const counts = queueCounts(db);
+  const [tickets, setTickets] = useState<AdminTicket[] | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
   const selected = get("id");
 
-  const tallies = useMemo(
-    () => ({
-      queue: db.tickets.filter((t) => t.status !== "solved").length,
-      open: db.tickets.filter((t) => t.status === "open").length,
-      pending: db.tickets.filter((t) => t.status === "pending").length,
-      solved: db.tickets.filter((t) => t.status === "solved").length,
-    }),
-    [db.tickets],
+  useEffect(() => {
+    fetchTickets()
+      .then(setTickets)
+      .catch((err) => setError((err as Error).message));
+  }, []);
+
+  const tallies = useMemo(() => {
+    const rows = tickets ?? [];
+    return {
+      queue: rows.filter((t) => t.status !== "solved").length,
+      open: rows.filter((t) => t.status === "open").length,
+      pending: rows.filter((t) => t.status === "pending").length,
+      solved: rows.filter((t) => t.status === "solved").length,
+    };
+  }, [tickets]);
+
+  const rows = (tickets ?? []).filter((t) =>
+    filter === "queue" ? t.status !== "solved" : t.status === filter,
   );
 
-  const rows = db.tickets
-    .filter((t) => (filter === "queue" ? t.status !== "solved" : t.status === filter))
-    // Breached first, then by how little time is left.
-    .sort((a, b) => a.slaHours - b.slaHours);
+  async function solve(ticket: AdminTicket) {
+    setBusy(ticket.id);
+    try {
+      setTickets(await setTicketStatus(ticket.id, "solved"));
+      toast("Ticket solved.");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function take(ticket: AdminTicket) {
+    setBusy(ticket.id);
+    try {
+      setTickets(await assignTicket(ticket.id, "You"));
+      toast("Assigned to you.");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <AdminFrame
       title="Support"
-      subtitle="Sample data — not yet wired to a real backend. Merchant tickets, ordered by how close each is to missing its first-response target."
+      subtitle="Tickets merchants have raised directly, ordered oldest-open first."
     >
+      {error && (
+        <p className="mb-4 flex items-center gap-2 rounded-2xl bg-danger-soft p-3.5 text-[13px] font-medium text-danger-text">
+          <AlertCircle className="size-4 shrink-0" />
+          {error}
+        </p>
+      )}
+
       <div className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="In the queue" value={String(tallies.queue)} sub="open and pending" />
-        <Metric
-          label="Past SLA"
-          value={String(counts.breached)}
-          sub={counts.breached === 1 ? "first response overdue" : "first responses overdue"}
-        />
-        <Metric label="Solved" value={String(tallies.solved)} sub="all time in this dataset" />
+        <Metric label="Open" value={String(tallies.open)} sub="not yet picked up" />
+        <Metric label="Solved" value={String(tallies.solved)} sub="all time" />
       </div>
 
       <Segmented
@@ -88,7 +126,12 @@ function Support() {
         ]}
       />
 
-      {rows.length === 0 ? (
+      {!tickets ? (
+        <p className="flex items-center gap-2 py-12 text-[13px] text-[#6B756A]">
+          <Loader2 className="size-4 animate-spin" />
+          Loading…
+        </p>
+      ) : rows.length === 0 ? (
         <Panel>
           <p className="px-4 py-12 text-center text-[13px] text-[#6B756A]">
             Nothing here. Inbox zero.
@@ -97,11 +140,9 @@ function Support() {
       ) : (
         <div className="space-y-3">
           {rows.map((ticket) => {
-            const merchant = merchantById(db, ticket.merchantId);
-            const breached = ticket.slaHours < 0 && ticket.status !== "solved";
             const expanded = selected === ticket.id;
             return (
-              <Panel key={ticket.id} className={cn(breached && "border-danger/40")}>
+              <Panel key={ticket.id}>
                 <div className="flex flex-wrap items-start gap-3 p-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -111,45 +152,25 @@ function Support() {
                       </Badge>
                       <Badge tone={priorityTone[ticket.priority]}>{ticket.priority}</Badge>
                       {ticket.status !== "solved" && (
-                        <span
-                          className={cn(
-                            "tabular inline-flex items-center gap-1 text-[11px] font-semibold",
-                            breached ? "text-danger" : "text-[#8A948A]",
-                          )}
-                        >
+                        <span className="tabular inline-flex items-center gap-1 text-[11px] font-semibold text-[#8A948A]">
                           <Clock className="size-3" />
-                          {breached
-                            ? `${Math.abs(ticket.slaHours).toFixed(1)}h overdue`
-                            : `${ticket.slaHours.toFixed(1)}h left`}
+                          opened {relativeTime(ticket.createdAt).toLowerCase()}
                         </span>
                       )}
                     </div>
                     <p className="mt-1.5 text-[13px] leading-relaxed text-[#4A544A]">
-                      {ticket.preview}
+                      {ticket.message}
                     </p>
                     <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[12px] text-[#8A948A]">
-                      {merchant && (
-                        <Link
-                          href={`/admin/merchants?id=${merchant.id}`}
-                          className="font-semibold text-[#4A544A] hover:underline"
-                        >
-                          {merchant.business}
-                        </Link>
-                      )}
-                      <span>opened {relativeTime(ticket.openedAt)}</span>
+                      <Link
+                        href={`/admin/merchants?id=${ticket.merchant.id}`}
+                        className="font-semibold text-[#4A544A] hover:underline"
+                      >
+                        {ticket.merchant.name}
+                      </Link>
+                      <span>opened {relativeTime(ticket.createdAt)}</span>
                       {ticket.assignee && <span>· {ticket.assignee}</span>}
                     </div>
-
-                    {expanded && merchant && (
-                      <div className="mt-3 rounded-xl bg-[#F8F9F7] p-3 text-[12px] leading-relaxed text-[#4A544A]">
-                        <p>
-                          {merchant.owner} · {merchant.email} · {merchant.phone}
-                        </p>
-                        <p className="mt-1">
-                          {merchant.plan} plan · {merchant.products} products · {merchant.region}
-                        </p>
-                      </div>
-                    )}
                   </div>
 
                   <div className="flex shrink-0 flex-wrap gap-2">
@@ -164,23 +185,15 @@ function Support() {
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => {
-                          assignTicket(ticket.id, "You");
-                          toast("Assigned to you.");
-                        }}
+                        disabled={busy === ticket.id}
+                        onClick={() => take(ticket)}
                       >
                         <UserPlus className="size-3.5" />
                         Take it
                       </Button>
                     )}
                     {ticket.status !== "solved" && (
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setTicketStatus(ticket.id, "solved");
-                          toast("Ticket solved.");
-                        }}
-                      >
+                      <Button size="sm" disabled={busy === ticket.id} onClick={() => solve(ticket)}>
                         <Check className="size-3.5" strokeWidth={3} />
                         Solve
                       </Button>

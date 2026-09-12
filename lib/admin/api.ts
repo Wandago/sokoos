@@ -118,3 +118,105 @@ export async function reinstateMerchant(id: string) {
   if (!token) throw new Error("Not signed in.");
   return call<MerchantDetail>(`/admin/merchants/${id}/reinstate`, { method: "POST" }, token);
 }
+
+export interface PlatformRevenue {
+  gmvThisMonth: number;
+  gmvLast30d: number;
+  gmvByWeek: { label: string; value: number }[];
+  topMerchants: { id: string; name: string; slug: string; gmv: number }[];
+}
+
+export async function fetchRevenue() {
+  const token = getAdminToken();
+  if (!token) throw new Error("Not signed in.");
+  return call<PlatformRevenue>("/admin/revenue", {}, token);
+}
+
+export interface PlatformSystem {
+  dbOk: boolean;
+  dbLatencyMs: number;
+  activeTenants7d: number;
+  recordsSynced24h: number;
+  unpostedMpesaEvents: number;
+  openReports: number;
+  openTickets: number;
+}
+
+export async function fetchSystem() {
+  const token = getAdminToken();
+  if (!token) throw new Error("Not signed in.");
+  return call<PlatformSystem>("/admin/system", {}, token);
+}
+
+export type ReportReason = "counterfeit" | "scam" | "offensive" | "impersonation" | "other";
+export type ReportStatus = "open" | "reviewing" | "upheld" | "dismissed";
+
+export interface AdminReport {
+  id: string;
+  reason: ReportReason;
+  detail: string;
+  reporterContact: string | null;
+  status: ReportStatus;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  merchant: { id: string; name: string; slug: string };
+  priorReports: number;
+}
+
+export async function fetchReports() {
+  const token = getAdminToken();
+  if (!token) throw new Error("Not signed in.");
+  return call<AdminReport[]>("/admin/reports", {}, token);
+}
+
+export async function setReportStatus(id: string, status: ReportStatus) {
+  const token = getAdminToken();
+  if (!token) throw new Error("Not signed in.");
+  return call<AdminReport[]>(
+    `/admin/reports/${id}/status`,
+    { method: "POST", body: JSON.stringify({ status }) },
+    token,
+  );
+}
+
+export type TicketPriority = "urgent" | "high" | "normal" | "low";
+export type TicketStatus = "open" | "pending" | "solved";
+
+export interface AdminTicket {
+  id: string;
+  subject: string;
+  message: string;
+  priority: TicketPriority;
+  status: TicketStatus;
+  assignee: string | null;
+  createdAt: string;
+  updatedAt: string;
+  merchant: { id: string; name: string; slug: string };
+}
+
+export async function fetchTickets() {
+  const token = getAdminToken();
+  if (!token) throw new Error("Not signed in.");
+  return call<AdminTicket[]>("/admin/tickets", {}, token);
+}
+
+export async function setTicketStatus(id: string, status: TicketStatus) {
+  const token = getAdminToken();
+  if (!token) throw new Error("Not signed in.");
+  return call<AdminTicket[]>(
+    `/admin/tickets/${id}/status`,
+    { method: "POST", body: JSON.stringify({ status }) },
+    token,
+  );
+}
+
+export async function assignTicket(id: string, assignee: string) {
+  const token = getAdminToken();
+  if (!token) throw new Error("Not signed in.");
+  return call<AdminTicket[]>(
+    `/admin/tickets/${id}/assign`,
+    { method: "POST", body: JSON.stringify({ assignee }) },
+    token,
+  );
+}

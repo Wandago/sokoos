@@ -209,3 +209,144 @@ export async function reinstateMerchant(id: string, actor: string) {
     id,
   ]);
 }
+
+/* ------------------------------------------------------------------ *
+ * Revenue
+ * ------------------------------------------------------------------ */
+
+/**
+ * What actually moved through the platform, not what SokoOS earns from it —
+ * there is no billing yet, so MRR, plans and take rate are not real numbers to
+ * report. GMV is: every payment a seller has recorded as received, across
+ * every business, however it arrived (M-Pesa, cash, anything else).
+ *
+ * `receivedAt` is guarded with a shape check before the cast, because this
+ * reads across every tenant's own JSON documents and a single malformed date
+ * must not fail the whole query for every business at once.
+ */
+const RECEIVED_PAYMENT_WHERE = `
+  kind = 'payment' and deleted_at is null
+    and doc->>'state' = 'received'
+    and doc->>'receivedAt' ~ '^\\d{4}-\\d{2}-\\d{2}'
+`;
+
+export interface PlatformRevenue {
+  gmvThisMonth: number;
+  gmvLast30d: number;
+  gmvByWeek: { label: string; value: number }[];
+  topMerchants: { id: string; name: string; slug: string; gmv: number }[];
+}
+
+export async function revenue(): Promise<PlatformRevenue> {
+  const { rows: monthRows } = await query<{ gmv: number }>(`
+    select coalesce(sum((doc->>'amount')::numeric), 0)::float8 as gmv
+      from records
+     where ${RECEIVED_PAYMENT_WHERE}
+       and date_trunc('month', (doc->>'receivedAt')::timestamptz) = date_trunc('month', now())
+  `);
+
+  const { rows: last30Rows } = await query<{ gmv: number }>(`
+    select coalesce(sum((doc->>'amount')::numeric), 0)::float8 as gmv
+      from records
+     where ${RECEIVED_PAYMENT_WHERE}
+       and (doc->>'receivedAt')::timestamptz > now() - interval '30 days'
+  `);
+
+  const { rows: weekRows } = await query<{ week_start: string; gmv: number }>(`
+    select date_trunc('week', (doc->>'receivedAt')::timestamptz)::date::text as week_start,
+           sum((doc->>'amount')::numeric)::float8 as gmv
+      from records
+     where ${RECEIVED_PAYMENT_WHERE}
+       and (doc->>'receivedAt')::timestamptz > now() - interval '8 weeks'
+     group by 1
+     order by 1
+  `);
+
+  const { rows: topRows } = await query<{
+    tenant_id: string;
+    name: string;
+    slug: string;
+    gmv: number;
+  }>(`
+    select t.id as tenant_id, t.name, t.slug,
+           sum((r.doc->>'amount')::numeric)::float8 as gmv
+      from records r
+      join tenants t on t.id = r.tenant_id
+     where r.kind = 'payment' and r.deleted_at is null
+       and r.doc->>'state' = 'received'
+       and r.doc->>'receivedAt' ~ '^\\d{4}-\\d{2}-\\d{2}'
+       and (r.doc->>'receivedAt')::timestamptz > now() - interval '30 days'
+     group by t.id, t.name, t.slug
+     order by gmv desc
+     limit 10
+  `);
+
+  return {
+    gmvThisMonth: monthRows[0]?.gmv ?? 0,
+    gmvLast30d: last30Rows[0]?.gmv ?? 0,
+    gmvByWeek: weekRows.map((r) => ({ label: r.week_start, value: r.gmv })),
+    topMerchants: topRows.map((r) => ({
+      id: r.tenant_id,
+      name: r.name,
+      slug: r.slug,
+      gmv: r.gmv,
+    })),
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * System health
+ * ------------------------------------------------------------------ */
+
+export interface PlatformSystem {
+  dbOk: boolean;
+  dbLatencyMs: number;
+  activeTenants7d: number;
+  recordsSynced24h: number;
+  /** Payments Safaricom sent that could not be posted — the real backlog a human has to clear. */
+  unpostedMpesaEvents: number;
+  openReports: number;
+  openTickets: number;
+}
+
+export async function systemHealth(): Promise<PlatformSystem> {
+  const startedAt = Date.now();
+  let dbOk = true;
+  try {
+    await query("select 1");
+  } catch {
+    dbOk = false;
+  }
+  const dbLatencyMs = Date.now() - startedAt;
+
+  const { rows: activeRows } = await query<{ n: number }>(`
+    select count(distinct tenant_id)::int as n
+      from records where updated_at > now() - interval '7 days'
+  `);
+
+  const { rows: syncedRows } = await query<{ n: number }>(`
+    select count(*)::int as n from records where server_at > now() - interval '1 day'
+  `);
+
+  const { rows: unpostedRows } = await query<{ n: number }>(`
+    select count(*)::int as n from mpesa_events where payment_id is null
+  `);
+
+  const { rows: reportRows } = await query<{ n: number }>(`
+    select count(*)::int as n from moderation_reports where status in ('open', 'reviewing')
+  `);
+
+  const { rows: ticketRows } = await query<{ n: number }>(`
+    select count(*)::int as n from support_tickets where status <> 'solved'
+  `);
+
+  return {
+    dbOk,
+    dbLatencyMs,
+    activeTenants7d: activeRows[0]?.n ?? 0,
+    recordsSynced24h: syncedRows[0]?.n ?? 0,
+    unpostedMpesaEvents: unpostedRows[0]?.n ?? 0,
+    openReports: reportRows[0]?.n ?? 0,
+    openTickets: ticketRows[0]?.n ?? 0,
+  };
+}

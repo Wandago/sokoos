@@ -81,7 +81,7 @@ async function signIn(phone: string, name?: string) {
 async function reset() {
   await migrate(() => {});
   // Order matters only to be readable; the cascades would handle it.
-  await query("truncate mpesa_events, mpesa_accounts, applied_batches, records, tenant_cursors, memberships, sessions, login_codes, accounts, tenants, admin_audit restart identity cascade");
+  await query("truncate mpesa_events, mpesa_accounts, moderation_reports, support_tickets, applied_batches, records, tenant_cursors, memberships, sessions, login_codes, accounts, tenants, admin_audit restart identity cascade");
 }
 
 async function main() {
@@ -646,6 +646,143 @@ async function main() {
     meAfterReinstate.body.tenants.some((t: Doc) => t.id === shop),
     meAfterReinstate.body,
   );
+
+  /* ---------------------------------------------------------------- */
+  section("A shop gets reported, and a ticket gets raised");
+
+  // Filing a report needs no session at all — that is the point.
+  const badReport = await api("POST", "/store/no-such-shop/report", { detail: "test" });
+  eq("reporting an unknown shop is a 404", badReport.status, 404);
+
+  const emptyDetail = await api("POST", "/store/amina-beauty-bar/report", { detail: "" });
+  eq("an empty report is refused", emptyDetail.status, 400);
+
+  const filedReport = await api("POST", "/store/amina-beauty-bar/report", {
+    reason: "scam",
+    detail: "Paid for a dress, it never arrived.",
+    contact: "0722000000",
+  });
+  eq("a report is filed", filedReport.status, 201);
+
+  const noAdminReports = await api("GET", "/admin/reports");
+  eq("reading the queue needs an admin session", noAdminReports.status, 401);
+
+  const reportsList = await api("GET", "/admin/reports", undefined, adminToken);
+  eq("it shows up for the operator console", reportsList.status, 200);
+  const openReport = reportsList.body.find((r: Doc) => (r.merchant as Doc).id === shop);
+  ok("against the right business", Boolean(openReport), reportsList.body);
+  eq("with the reason given", openReport.reason, "scam");
+  eq("starting open", openReport.status, "open");
+
+  const dismissed = await api(
+    "POST",
+    `/admin/reports/${openReport.id}/status`,
+    { status: "dismissed" },
+    adminToken,
+  );
+  eq("dismissing a report works", dismissed.status, 200);
+  const stillActive = await api("GET", `/admin/merchants/${shop}`, undefined, adminToken);
+  ok("and does not touch the merchant", !stillActive.body.suspendedAt, stillActive.body);
+
+  // A second report against the same shop, upheld this time.
+  await api("POST", "/store/amina-beauty-bar/report", {
+    reason: "counterfeit",
+    detail: "Fake handbags.",
+  });
+  const secondList = await api("GET", "/admin/reports", undefined, adminToken);
+  const secondReport = secondList.body.find(
+    (r: Doc) => r.status === "open" && (r.merchant as Doc).id === shop,
+  );
+  ok("the second report is there to act on", Boolean(secondReport), secondList.body);
+  eq("and remembers the earlier one", secondReport.priorReports, 1);
+
+  const upheld = await api(
+    "POST",
+    `/admin/reports/${secondReport.id}/status`,
+    { status: "upheld" },
+    adminToken,
+  );
+  eq("upholding a report works", upheld.status, 200);
+  const suspendedByReport = await api("GET", `/admin/merchants/${shop}`, undefined, adminToken);
+  ok("and suspends the merchant", Boolean(suspendedByReport.body.suspendedAt), suspendedByReport.body);
+
+  // Put the business back for whatever runs after this.
+  await api("POST", `/admin/merchants/${shop}/reinstate`, {}, adminToken);
+
+  const noSubject = await api("POST", `/tenants/${shop}/support`, { message: "help" }, amina.token);
+  eq("a ticket needs a subject", noSubject.status, 400);
+
+  const ticket = await api(
+    "POST",
+    `/tenants/${shop}/support`,
+    {
+      subject: "Till not registering",
+      message: "Safaricom keeps rejecting the callback URLs.",
+      priority: "high",
+    },
+    amina.token,
+  );
+  eq("a ticket is filed", ticket.status, 201);
+
+  const nosyTicket = await api(
+    "POST",
+    `/tenants/${shop}/support`,
+    { subject: "x", message: "y" },
+    brian.token,
+  );
+  eq("only a member of the business can raise a ticket for it", nosyTicket.status, 404);
+
+  const ticketsList = await api("GET", "/admin/tickets", undefined, adminToken);
+  eq("it reaches the operator console", ticketsList.status, 200);
+  const openTicket = ticketsList.body.find((t: Doc) => t.id === ticket.body.id);
+  ok("with the right subject", openTicket?.subject === "Till not registering", ticketsList.body);
+  eq("and priority", openTicket.priority, "high");
+  eq("starting open", openTicket.status, "open");
+  eq("and unassigned", openTicket.assignee, null);
+
+  const assignedList = await api(
+    "POST",
+    `/admin/tickets/${ticket.body.id}/assign`,
+    { assignee: "ops@sokoos.app" },
+    adminToken,
+  );
+  eq("assigning a ticket works", assignedList.status, 200);
+  const assignedTicket = assignedList.body.find((t: Doc) => t.id === ticket.body.id);
+  eq("and it sticks", assignedTicket.assignee, "ops@sokoos.app");
+
+  const solvedList = await api(
+    "POST",
+    `/admin/tickets/${ticket.body.id}/status`,
+    { status: "solved" },
+    adminToken,
+  );
+  eq("solving a ticket works", solvedList.status, 200);
+  const solvedTicket = solvedList.body.find((t: Doc) => t.id === ticket.body.id);
+  eq("and it sticks too", solvedTicket.status, "solved");
+
+  /* ---------------------------------------------------------------- */
+  section("Revenue and system, real numbers");
+
+  const revenue = await api("GET", "/admin/revenue", undefined, adminToken);
+  eq("revenue loads", revenue.status, 200);
+  ok(
+    "GMV counts the settled payments made earlier in this run",
+    revenue.body.gmvLast30d >= 2200,
+    revenue.body,
+  );
+  const topShop = revenue.body.topMerchants.find((m: Doc) => m.id === shop);
+  ok("and the shop shows up in the top list", Boolean(topShop), revenue.body.topMerchants);
+
+  const system = await api("GET", "/admin/system", undefined, adminToken);
+  eq("system loads", system.status, 200);
+  ok("the database answers", system.body.dbOk);
+  ok(
+    "at least one business synced something in the last day",
+    system.body.recordsSynced24h > 0,
+    system.body,
+  );
+  eq("the report queue is clear again", system.body.openReports, 0);
+  eq("and so is the ticket queue", system.body.openTickets, 0);
 
   await api("POST", "/admin/sign-out", {}, adminToken);
   const afterAdminSignOut = await api("GET", "/admin/merchants", undefined, adminToken);

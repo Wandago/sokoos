@@ -94,6 +94,13 @@ export async function connectTill(
     ],
   );
 
+  /* A token cached under the old credentials is not a token for these ones.
+   * Without this, saving a fresh key and secret after a mistake still leaves
+   * the next Daraja call presenting the stale token Safaricom minted for the
+   * credentials just replaced — which reads back as "Invalid Access Token"
+   * with no clue that the fix already happened. */
+  tokens.delete(tenantId);
+
   return { callbackSecret: rows[0]!.callback_secret };
 }
 

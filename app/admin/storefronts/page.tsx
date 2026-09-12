@@ -1,18 +1,20 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, ExternalLink, ShieldAlert, X } from "lucide-react";
+import { AlertCircle, Check, ExternalLink, Loader2, ShieldAlert, X } from "lucide-react";
 import { AdminFrame, Panel } from "@/components/admin/admin-frame";
-import { MerchantStatusBadge } from "@/components/admin/merchant-bits";
 import { Badge } from "@/components/ui/badge";
 import { Segmented } from "@/components/ui/segmented";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { useAdmin } from "@/lib/admin/store";
-import { merchantById } from "@/lib/admin/selectors";
-import { reasonLabel } from "@/lib/admin/types";
-import type { ReportStatus } from "@/lib/admin/types";
+import {
+  fetchReports,
+  setReportStatus,
+  type AdminReport,
+  type ReportReason,
+  type ReportStatus,
+} from "@/lib/admin/api";
 import { useQuery } from "@/lib/use-query";
 import { fullDate, relativeTime } from "@/lib/format";
 
@@ -40,34 +42,75 @@ const statusLabel: Record<ReportStatus, string> = {
   dismissed: "Dismissed",
 };
 
+const reasonLabel: Record<ReportReason, string> = {
+  counterfeit: "Selling fakes or counterfeits",
+  scam: "Took payment, never delivered",
+  offensive: "Offensive content",
+  impersonation: "Impersonating another business",
+  other: "Something else",
+};
+
 function Moderation() {
-  const { db, setReportStatus, setMerchantStatus } = useAdmin();
   const { get, set } = useQuery();
   const toast = useToast();
   const [filter, setFilter] = useState<Filter>("queue");
+  const [reports, setReports] = useState<AdminReport[] | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
 
   const selected = get("id");
 
-  const counts = useMemo(
-    () => ({
-      queue: db.reports.filter((r) => r.status === "open" || r.status === "reviewing").length,
-      open: db.reports.filter((r) => r.status === "open").length,
-      reviewing: db.reports.filter((r) => r.status === "reviewing").length,
-      upheld: db.reports.filter((r) => r.status === "upheld").length,
-      dismissed: db.reports.filter((r) => r.status === "dismissed").length,
-    }),
-    [db.reports],
-  );
+  useEffect(() => {
+    fetchReports()
+      .then(setReports)
+      .catch((err) => setError((err as Error).message));
+  }, []);
 
-  const rows = db.reports.filter((r) =>
+  const counts = useMemo(() => {
+    const rows = reports ?? [];
+    return {
+      queue: rows.filter((r) => r.status === "open" || r.status === "reviewing").length,
+      open: rows.filter((r) => r.status === "open").length,
+      reviewing: rows.filter((r) => r.status === "reviewing").length,
+      upheld: rows.filter((r) => r.status === "upheld").length,
+      dismissed: rows.filter((r) => r.status === "dismissed").length,
+    };
+  }, [reports]);
+
+  const rows = (reports ?? []).filter((r) =>
     filter === "queue" ? r.status === "open" || r.status === "reviewing" : r.status === filter,
   );
+
+  async function act(report: AdminReport, status: "upheld" | "dismissed") {
+    setBusy(report.id);
+    try {
+      const next = await setReportStatus(report.id, status);
+      setReports(next);
+      toast(
+        status === "upheld"
+          ? `Upheld. ${report.merchant.name} suspended.`
+          : "Report dismissed.",
+        status === "upheld" ? "error" : "success",
+      );
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <AdminFrame
       title="Storefront moderation"
-      subtitle="Sample data — not yet wired to a real backend. Reports raised against merchant mini sites, by customers and by automated scans."
+      subtitle="Reports raised against merchant mini sites, by customers directly from the storefront."
     >
+      {error && (
+        <p className="mb-4 flex items-center gap-2 rounded-2xl bg-danger-soft p-3.5 text-[13px] font-medium text-danger-text">
+          <AlertCircle className="size-4 shrink-0" />
+          {error}
+        </p>
+      )}
+
       <Segmented
         className="mb-4"
         value={filter}
@@ -81,7 +124,12 @@ function Moderation() {
         ]}
       />
 
-      {rows.length === 0 ? (
+      {!reports ? (
+        <p className="flex items-center gap-2 py-12 text-[13px] text-[#6B756A]">
+          <Loader2 className="size-4 animate-spin" />
+          Loading…
+        </p>
+      ) : rows.length === 0 ? (
         <Panel>
           <p className="px-4 py-12 text-center text-[13px] text-[#6B756A]">
             Nothing in this view. The queue is clear.
@@ -90,7 +138,6 @@ function Moderation() {
       ) : (
         <div className="space-y-3">
           {rows.map((report) => {
-            const merchant = merchantById(db, report.merchantId);
             const expanded = selected === report.id;
             const settled = report.status === "upheld" || report.status === "dismissed";
             return (
@@ -106,39 +153,40 @@ function Moderation() {
                         {statusLabel[report.status]}
                       </Badge>
                       <span className="text-[11px] text-[#8A948A]">
-                        {report.reporter} · {relativeTime(report.reportedAt)}
+                        {report.reporterContact || "Anonymous"} · {relativeTime(report.createdAt)}
                       </span>
                     </div>
                     <p className="mt-1.5 text-[13px] leading-relaxed text-[#4A544A]">
                       {report.detail}
                     </p>
-                    {merchant && (
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[12px]">
-                        <Link
-                          href={`/admin/merchants?id=${merchant.id}`}
-                          className="font-semibold hover:underline"
-                        >
-                          {merchant.business}
-                        </Link>
-                        <MerchantStatusBadge status={merchant.status} />
-                        <span className="inline-flex items-center gap-1 text-[#8A948A]">
-                          <ExternalLink className="size-3" />
-                          sokoos.app/store/{merchant.slug}
-                        </span>
-                      </div>
-                    )}
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[12px]">
+                      <Link
+                        href={`/admin/merchants?id=${report.merchant.id}`}
+                        className="font-semibold hover:underline"
+                      >
+                        {report.merchant.name}
+                      </Link>
+                      <span className="inline-flex items-center gap-1 text-[#8A948A]">
+                        <ExternalLink className="size-3" />
+                        sokoos.app/store/{report.merchant.slug}
+                      </span>
+                    </div>
 
-                    {expanded && merchant && (
+                    {expanded && (
                       <div className="mt-3 rounded-xl bg-[#F8F9F7] p-3 text-[12px] leading-relaxed text-[#4A544A]">
                         <p>
-                          <span className="font-semibold">Joined:</span>{" "}
-                          {fullDate(merchant.joinedAt)} · <span className="font-semibold">Plan:</span>{" "}
-                          {merchant.plan} · <span className="font-semibold">Products:</span>{" "}
-                          {merchant.products}
+                          <span className="font-semibold">Filed:</span> {fullDate(report.createdAt)}
+                          {report.resolvedAt && (
+                            <>
+                              {" "}
+                              · <span className="font-semibold">Resolved:</span>{" "}
+                              {fullDate(report.resolvedAt)} by {report.resolvedBy}
+                            </>
+                          )}
                         </p>
                         <p className="mt-1">
-                          <span className="font-semibold">Prior reports:</span>{" "}
-                          {db.reports.filter((r) => r.merchantId === merchant.id).length - 1}
+                          <span className="font-semibold">Prior reports on this business:</span>{" "}
+                          {report.priorReports}
                         </p>
                       </div>
                     )}
@@ -157,10 +205,8 @@ function Moderation() {
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() => {
-                            setReportStatus(report.id, "dismissed");
-                            toast("Report dismissed.");
-                          }}
+                          disabled={busy === report.id}
+                          onClick={() => act(report, "dismissed")}
                         >
                           <X className="size-3.5" />
                           Dismiss
@@ -168,22 +214,8 @@ function Moderation() {
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => {
-                            setReportStatus(report.id, "upheld");
-                            if (merchant) {
-                              setMerchantStatus(
-                                merchant.id,
-                                "suspended",
-                                `Report upheld: ${reasonLabel[report.reason].toLowerCase()}`,
-                              );
-                            }
-                            toast(
-                              merchant
-                                ? `Upheld. ${merchant.business} suspended.`
-                                : "Report upheld.",
-                              "error",
-                            );
-                          }}
+                          disabled={busy === report.id}
+                          onClick={() => act(report, "upheld")}
                         >
                           <Check className="size-3.5" strokeWidth={3} />
                           Uphold

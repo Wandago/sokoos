@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmSheet } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { TillCard } from "@/components/mpesa/till-card";
+import { SupportCard } from "@/components/support/support-card";
 import { SyncEnroll } from "@/components/sync-enroll";
 import { useToast } from "@/components/ui/toast";
 import { useTour } from "@/components/product-tour";
@@ -236,6 +237,9 @@ function SettingsScreen() {
 
       <SectionTitle>M-Pesa</SectionTitle>
       <TillCard tillNumber={db.business.tillNumber} />
+
+      <SectionTitle>Support</SectionTitle>
+      <SupportCard />
 
       <SectionTitle>Appearance</SectionTitle>
       <Card className="mb-5 p-3">
